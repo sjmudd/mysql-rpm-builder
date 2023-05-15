@@ -45,5 +45,5 @@ If successful the final binary rpms should be found in
 
 The build process will save logs in the ~/rpmbuild/SPECS directory.
 
-If successful the list of installed rpms is also recorded. This may
-change over time.
+If successful the list of installed rpms required to peform the build
+is also recorded as this may change over time.
