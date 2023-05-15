@@ -40,7 +40,8 @@ prepare() {
 		perl-JSON \
 		rpcgen \
 		rpm-build \
-		time 
+		time \
+		wget
 	# patch gcc-toolset to avoid build problems
 	if ! [ -e /opt/rh/gcc-toolset-10/root/usr/lib/gcc/x86_64-redhat-linux/10/plugin/gcc-annobin.so ]; then
 		echo "### symlinking gcc-annobin.so to annobin.so"
