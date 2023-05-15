@@ -28,7 +28,7 @@ Directory layout:
 
 Build process:
 (1) Create docker container:
-    $ docker run --rm -it --network=host --hostname=builder -v .:/data quay.io/centos/centos:stream
+    $ docker run --rm -it --network=host --hostname=builder -v $PWD:/data quay.io/centos/centos:stream
 
 (2) Within docker container, as root run:
     # sh /data/build-environment.sh 8.0.32 # setup os as required
