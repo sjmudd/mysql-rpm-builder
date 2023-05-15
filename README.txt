@@ -1,18 +1,39 @@
 ############################################################################
 #                                                                          #
-#                         mysql rpm rebuilder                              #
+#                         mysql rpm (re)builder                            #
 #                                                                          #
-# Trigger repeatable rpm builds from src rpm, but making it easy to apply  #
-# patches to upstream sources.                                             #
+# Trigger repeatable rpm builds from a src rpm.                            #
+#                                                                          #
+# This has two main purposes:                                              #
+# - build binary rpms from the src.rpm in a repeatable manner ensuring the #
+#   exact build requirements are defined.                                  #
+#   While rpm does have a BuildRequires section intended to provide the    #
+#   list of build dependencies often this is far from precise and it is    #
+#   often incomplte.  This can mean that if the your build environment is  #
+#   setup differently to mine you can build binary packages but I can not, #
+#   something which is problematic.  This repo intended to make the OS     #
+#   environment build process explict (e.g when building from a docker     #
+#   image) and also ensures the subsequent rpm-build run is explicit too.  #
+# - build patched versions of the original src rpm with minimal changes.   #
+#   along the same lines as the pervious step we can now build a patched   #
+#   version of the upstream src.rpms by providing the required changes,    #
+#   usually a patch, and building using the same process as before.        #
 #                                                                          #
 # Intention: to build from an empty OS container, ensure the build         #
 # environment is setup explicitly and then to build as a non-root user.    #
 #                                                                          #
-# I found the current build process is not very strictly defined at least  #
-# the BuildRequires entries in the mysql.spec file seems incomplete.       #
-# This repo is intended to make it easier to rebuild from provided sources #
-# and at the same time to record the specific build process more           #
-# more explicitly.                                                         #
+# I have found that the docs on performing a rebuild, at least as done     #
+# by upstream vendors may be far from complete and this had made building  #
+# for a new OS or wanting to build the existing software with a specific   #
+# patch much harder than expected.                                         #
+#                                                                          #
+# Given the OS (prepare.sh) and rpm build stages are triggered by explicit #
+# scripts, starting from a known initial state (the base docker image)     #
+# the whole process is completely defined and should be repeatable.        #
+#                                                                          #
+# A similar usage might happen when chaning from one major OS version to   #
+# another or if changing from one major software version to another: all   #
+# changes becomes much more visible.                                       #
 #                                                                          #
 # This is clearly work in progress. If you have feedback to provide you    #
 # can reach me at sjmudd at pobox.com or file an issue on github directly. #
@@ -25,10 +46,17 @@ Directory layout:
 - rpmbuild/ directory is for building rpms for the non-root build user
 - SRPMS/ contains cached or non-cached SRPMS files. If configured the SRPMS
   may be downloaded here from an external site once and reused later.
+- log/ log files of completed or failed builds.
 
 Build process:
 (1) Create docker container:
     $ docker run --rm -it --network=host --hostname=builder -v $PWD:/data quay.io/centos/centos:stream
+        or
+    $ ./start-docker-container.sh [<image_to_use>]
+
+    Current images are:
+    - CentOS 8 stream: quay.io/centos/centos:stream (default)
+    - OEL 8: oraclelinux:8.7
 
 (2) Within docker container, as root run:
     # sh /data/build-environment.sh 8.0.32 # setup os as required
