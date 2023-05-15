@@ -25,14 +25,18 @@ install_srpms () {
 # - FIXME fix config to work with OS other than rhel8
 # - commercial 0 should not be needed as should be default (?)
 rpmbuild_rpms () {
-    local timestamp=$(date +%Y%m%d.%H%M%S)
-    cd ~/rpmbuild/SPECS
-    rpmbuild --define 'commercial 0' --define 'el8 1' --define 'rhel 8' -ba mysql.spec 2>&1 | tee -a mysql-build-$build_environment.$timestamp.log
-    rc=$?
-    # if build is successful record the installed package list
-    if [ $rc = 0 ]; then
-        rpm -qa > rpm-qa.$build_environment.$timestamp
-    fi
+	local timestamp=$(date +%Y%m%d.%H%M%S)
+	cd ~/rpmbuild/SPECS
+	rpmbuild --define 'commercial 0' --define 'el8 1' --define 'rhel 8' -ba mysql.spec 2>&1 | tee -a ~/log/mysql-build-$build_environment.$timestamp.log
+	rc=$?
+
+	# If build is successful record the installed package list,
+	# or record the failed list as that may need fixing.
+	if [ $rc = 0 ]; then
+		rpm -qa > ~/log/rpm-qa.$build_environment.$timestamp
+	else
+		rpm -qa > ~/log/rpm-qa.$build_environment.$timestamp.failed
+	fi
 }
 
 BUILD_USER=rpmbuild
