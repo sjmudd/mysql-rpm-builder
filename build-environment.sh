@@ -6,7 +6,7 @@
 # Install the appropriate src.rpm from upstream sources
 # - keep local copy to speed up process so if we do this frequently
 install_srpms () {
-    local SRPMS="$1" # space separated list of src.rpms to install from urls
+	local SRPMS="$1" # space separated list of src.rpms to install from urls
 
 	for url in $SRPMS; do
 		rpm=$(basename $url)
@@ -16,6 +16,7 @@ install_srpms () {
 		fi
 		location=/data/SRPMS/$rpm
 		echo "Installing $url from $location"
+		rpm -ivh $location
 	done
 }
 
@@ -24,7 +25,7 @@ install_srpms () {
 # - FIXME fix config to work with OS other than rhel8
 # - commercial 0 should not be needed as should be default (?)
 rpmbuild_rpms () {
-    local timestamp=$(date +%Y%m%d.%M%H%S.log)
+    local timestamp=$(date +%Y%m%d.%H%M%S.log)
     cd ~/rpmbuild/SPECS
     rpmbuild --define 'commercial 0' --define 'el8 1' --define 'rhel 8' -ba mysql.spec 2>&1 | tee -a mysql-build-$build_environment.$timestamp.log
     rc=$?
