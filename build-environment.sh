@@ -3,6 +3,18 @@
 # build environment for building MySQL from src.rpms
 #
 
+setup_build_user () {}
+	echo "########################################################"
+	echo "#            Preparing OS for building rpms            #"
+	echo "########################################################"
+	if ! grep $BUILD_USER /etc/passwd; then
+		echo "### Adding missing build user $BUILD_USER"
+		useradd --no-create-home -d /data $BUILD_USER
+	else
+		echo "### required build user $BUILD_USER already present"
+	fi
+}
+
 # Install the appropriate src.rpm from upstream sources
 # - keep local copy to speed up process so if we do this frequently
 install_srpms () {

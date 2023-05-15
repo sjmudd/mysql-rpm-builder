@@ -7,15 +7,7 @@
 set -e
 
 prepare() {
-	echo "########################################################"
-	echo "#           preparing OS for building                  #"
-	echo "########################################################"
-	if ! grep $BUILD_USER /etc/passwd; then
-		echo "### Adding missing build user $BUILD_USER"
-		useradd --no-create-home -d /data $BUILD_USER
-	else
-		echo "### required build user $BUILD_USER already present"
-	fi
+    setup_build_user
 
 	cd /data
 	yum update -y
