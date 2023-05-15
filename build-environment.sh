@@ -3,7 +3,7 @@
 # build environment for building MySQL from src.rpms
 #
 
-setup_build_user () {}
+setup_build_user () {
 	echo "########################################################"
 	echo "#            Preparing OS for building rpms            #"
 	echo "########################################################"
