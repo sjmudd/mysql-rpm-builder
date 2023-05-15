@@ -34,9 +34,9 @@ rpmbuild_rpms () {
 	# or record the failed list as that may need fixing.
 	rpm_qa=~/log/rpm-qa.$build_environment.$timestamp
 	if [ $rc != 0 ]; then
-	    rpm -qa | sort > $rpm_qa
+        rpm -qa | sort > $rpm_qa
     else
-	    rpm -qa | sort > $rpm_qa.failed
+        rpm -qa | sort > $rpm_qa.failed
 	fi
 }
 
