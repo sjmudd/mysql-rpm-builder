@@ -31,7 +31,7 @@ rpmbuild_rpms () {
     rc=$?
     # if build is successful record the installed package list
     if [ $rc = 0 ]; then
-        rpm -qa > rpm-qa.$timestamp
+        rpm -qa > rpm-qa.$build_environment.$timestamp
     fi
 }
 
