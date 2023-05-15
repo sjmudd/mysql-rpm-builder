@@ -43,8 +43,9 @@ If successful the final binary rpms should be found in
 ~/rpmbuild/RPMS/<arch> and final src rpm should be found in
 ~/rpmbuild/SRPMS/.
 
-The build process will save logs in the ~/rpmbuild/SPECS directory,
-based off the build_environment name and build start time in UTC.
+The build process will save logs in the ~/log directory, based off the
+build_environment name and build start time in UTC.
 
 If successful the list of installed rpms required to peform the build
-is also recorded as this may change over time.
+is also recorded as this may change over time or if the build fails it is
+useful to share with others in case the installed rpms are not correct.
