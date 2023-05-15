@@ -35,7 +35,9 @@ Build process:
     # su - rpmbuild                        # change to rpmbuild build user
 
 (3) Without exiting the shell perform the build
-    $ sh build-environment.sh 8.0.32 # build 8.0.32 rpm from src.rpm in /data/config/8.0.32/SRPMS/
+    # build 8.0.32 rpm from src.rpm configured in $SRPMS in
+    # /data/config/8.0.32/build.sh or cached copy in /data/SRPMS if present.
+    $ sh build-environment.sh 8.0.32
 
 If successful the final binary rpms should be found in
 ~/rpmbuild/RPMS/<arch> and final src rpm should be found in
