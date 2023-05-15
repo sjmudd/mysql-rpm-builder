@@ -22,12 +22,11 @@ install_srpms () {
 
 # build package
 # - FIXME (add signing)
-# - FIXME fix config to work with OS other than rhel8
-# - commercial 0 should not be needed as should be default (?)
+# - FIXME fix config to work with OS other than rhel8 / oel8
 rpmbuild_rpms () {
 	local timestamp=$(date +%Y%m%d.%H%M%S)
 	cd ~/rpmbuild/SPECS
-	rpmbuild --define 'commercial 0' --define 'el8 1' --define 'rhel 8' -ba mysql.spec 2>&1 | tee -a ~/log/mysql-build-$build_environment.$timestamp.log
+	rpmbuild --define 'el8 1' --define 'rhel 8' -ba mysql.spec 2>&1 | tee -a ~/log/mysql-build-$build_environment.$timestamp.log
 	rc=$?
 
 	# If build is successful record the installed package list,
