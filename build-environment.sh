@@ -18,18 +18,19 @@ setup_build_user () {
 # Install the appropriate src.rpm from upstream sources
 # - keep local copy to speed up process so if we do this frequently
 install_srpms () {
-	local SRPMS="$1" # space separated list of src.rpms to install from urls
+    local SRPMS="$1" # space separated list of src.rpms to install from urls
 
-	for url in $SRPMS; do
-		rpm=$(basename $url)
-		if [ ! -e /data/SRPMS/$rpm ]; then
-			echo "Downloading $url to /data/SRPMS"
-			( cd /data/SRPMS && wget $url )
-		fi
-		location=/data/SRPMS/$rpm
-		echo "Installing $url from $location"
-		rpm -ivh $location
-	done
+    for url in $SRPMS; do
+        echo "Want to install $url"
+        rpm=$(basename $url)
+        if [ ! -e /data/SRPMS/$rpm ]; then
+            echo "- Downloading $url to /data/SRPMS"
+            ( cd /data/SRPMS && wget $url )
+        fi
+        location=/data/SRPMS/$rpm
+        echo "- Installing $url from $location"
+        rpm -ivh $location
+    done
 }
 
 # build package
