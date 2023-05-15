@@ -32,10 +32,11 @@ rpmbuild_rpms () {
 
 	# If build is successful record the installed package list,
 	# or record the failed list as that may need fixing.
-	if [ $rc = 0 ]; then
-		rpm -qa > ~/log/rpm-qa.$build_environment.$timestamp
-	else
-		rpm -qa > ~/log/rpm-qa.$build_environment.$timestamp.failed
+	rpm_qa=~/log/rpm-qa.$build_environment.$timestamp
+	if [ $rc != 0 ]; then
+	    rpm -qa | sort > $rpm_qa
+    else
+	    rpm -qa | sort > $rpm_qa.failed
 	fi
 }
 
