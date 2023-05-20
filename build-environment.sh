@@ -27,11 +27,12 @@ setup_build_user () {
 	echo "#                 $NAME ($ID $VERSION_ID)"
 	echo "#                  for building rpms                   #"
 	echo "########################################################"
+	echo
 	if ! grep $BUILD_USER /etc/passwd; then
-		echo "### Adding missing build user $BUILD_USER"
+		echo "### Adding missing build user: $BUILD_USER"
 		useradd --no-create-home -d /data $BUILD_USER
 	else
-		echo "### required build user $BUILD_USER already present"
+		echo "### Required build user $BUILD_USER already present"
 	fi
 }
 
@@ -46,6 +47,7 @@ install_srpms () {
 	echo "########################################################"
 	echo "#                 installing SRPMS                     #"
 	echo "########################################################"
+	echo
 	for url in $SRPMS; do
 		echo "- Want to install $url"
 		rpm=$(basename $url)
@@ -136,13 +138,45 @@ rpmbuild_rpms () {
 	fi
 }
 
+# Complete the rpm build part if requested.
+# - if not indicate how to proceed
+run_build_user_part () {
+	if [ -n "$build_all" ]; then
+		echo "##############################################################"
+		echo "#  switching to user $BUILD_USER to complete the rpm build"
+		echo "##############################################################"
+		echo
+		su - $BUILD_USER $0 $mysql_build_version
+	else
+		echo "Continue the build as $BUILD_USER by doing:"
+		echo
+		echo "    su - $BUILD_USER /data/build-environment.sh $mysql_build_version"
+		echo
+		echo "or rerun the complete process in one go with:"
+		echo
+		echo "    $0 -a $mysql_build_version"
+		echo
+	fi
+}
+
 BUILD_USER=rpmbuild
+build_all=
 
 set -e
 
 if [ -z "$USER" ]; then
 	USER=$(id -un)
 fi
+
+while getopts a flag; do
+	case $flag in
+	a)	build_all=1
+		;;
+	*)	echo "INVALID FLAG $flag"
+		exit 1
+	esac
+done
+shift $(($OPTIND - 1))
 
 mysql_build_version=$1
 if [ -z "$mysql_build_version" ]; then
@@ -178,6 +212,15 @@ root)
 		echo "No OS prepare script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
 		exit 1
 	fi
+
+	echo
+	echo "########################################################"
+	echo "#              os preparation complete for             #"
+	echo "#                 $NAME ($ID $VERSION_ID)"
+	echo "########################################################"
+	echo
+
+	run_build_user_part
 	;;
 $BUILD_USER)
 	##########################

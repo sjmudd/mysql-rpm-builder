@@ -52,10 +52,4 @@ prepare() {
 	else
 		echo "### /etc/bashrc already patched to enable gcc-toolset-10"
 	fi
-	echo "########################################################"
-	echo "#           os preparation complete                    #"
-	echo "########################################################"
-	echo "continue by doing"
-	echo "su - $BUILD_USER"
-	echo "sh build-environment.sh $build_version"
 }
