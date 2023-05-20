@@ -147,6 +147,19 @@ other differences with its _brothers_.  Most of this is easy to fix,
 but none of it is explicit, requiring you to make unexpected changes
 prior to being able to rebuild MySQL rpms.
 
+## Build times
+
+I was somewhat suprised at how long it takes to rebuild the rpms.
+I normally do this very rarely.  I have also done this from the git
+source tree provided by Oracle.
+
+The rpm rebuild times seem to be quite a long longer. This is I believe
+because both the normal and debug builds take place making the process
+much longer. On a home system I have (SER 4700u) this takes about 2-3
+hours, though may be partially slowed down by not using fast local
+storage, but an external NFS NAS.  The C/C++ build process reads and
+writes a lot to the filesystem so storage latency may be signifcant.
+
 ## TODO
 
 I should probably provide a mechanism for patching the `mysql.spec`
