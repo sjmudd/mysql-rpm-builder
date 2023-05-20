@@ -105,7 +105,7 @@ install_custom_patches () {
 
 # Create missing directories
 create_missing_directories () {
-	local directories="/data/SRPMS"
+	local directories="/data/SRPMS /data/log"
 	local dir
 
 	for dir in $directories; do
