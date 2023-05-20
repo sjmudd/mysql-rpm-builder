@@ -41,12 +41,20 @@
 ############################################################################
 
 Directory layout:
-- config/<VERSION> has per version configuration and build scripts, possibly
-  including any local patches that might need to be applied.
-- rpmbuild/ directory is for building rpms for the non-root build user
-- SRPMS/ contains cached or non-cached SRPMS files. If configured the SRPMS
-  may be downloaded here from an external site once and reused later.
-- log/ log files of completed or failed builds.
+- config/            build configuration directory.
+- config/build.conf  configuration file indicating which scripts should be
+                     used for preparing the OS or building MySQL
+- config/<VERSION>   an optional directory of SOURCES/ or SPECS/ override
+                     files when building the rpm. These files will be placed
+                     in the appropriate directory after instaling the given
+                     .src.rpm file, allowing build configuration to be
+                     modified fromt he original src.rpm files.
+- rpmbuild/          directory is for building rpms for the non-root build
+                     user.
+- SRPMS/             cached or non-cached SRPMS files. If configured the
+                     SRPMS may be downloaded here from an external site once
+                     and reused later.
+- log/               log files of completed or failed builds.
 
 Build process:
 (1) Create docker container:

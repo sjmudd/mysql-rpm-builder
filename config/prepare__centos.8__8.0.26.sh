@@ -57,5 +57,5 @@ prepare() {
 	echo "########################################################"
 	echo "continue by doing"
 	echo "su - $BUILD_USER"
-	echo "sh build-environment.sh $build_environment"
+	echo "sh build-environment.sh $build_version"
 }

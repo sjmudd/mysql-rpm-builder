@@ -3,9 +3,29 @@
 # build environment for building MySQL from src.rpms
 #
 
+get_os_and_version () {
+	if [ -z "$ID" ]; then
+		. /etc/os-release
+
+		case $ID in
+		almalinux|ol|rocky|centos|rhel)
+			# convert to a single digit if there's a decimal part
+			BUILD_VERSION=$(echo $VERSION_ID | sed -e 's/\..*//')
+			;;
+		*)
+			echo "Unrecognised OS: $NAME ($ID $VERSION_ID). Provide a patch to support your linux version if needed."
+			exit 1
+		esac
+	fi
+}
+
 setup_build_user () {
+	local name="$NAME ($ID $VERSION_ID)"
+
 	echo "########################################################"
-	echo "#            Preparing OS for building rpms            #"
+	echo "#                       Preparing                      #"
+	echo "#                 $NAME ($ID $VERSION_ID)"
+	echo "#                  for building rpms                   #"
 	echo "########################################################"
 	if ! grep $BUILD_USER /etc/passwd; then
 		echo "### Adding missing build user $BUILD_USER"
@@ -18,37 +38,101 @@ setup_build_user () {
 # Install the appropriate src.rpm from upstream sources
 # - keep local copy to speed up process so if we do this frequently
 install_srpms () {
-    local SRPMS="$1" # space separated list of src.rpms to install from urls
+	local SRPMS="$1" # space separated list of src.rpms to install from urls
+	local location
+	local rpm
+	local url
 
-    for url in $SRPMS; do
-        echo "Want to install $url"
-        rpm=$(basename $url)
-        if [ ! -e /data/SRPMS/$rpm ]; then
-            echo "- Downloading $url to /data/SRPMS"
-            ( cd /data/SRPMS && wget $url )
-        fi
-        location=/data/SRPMS/$rpm
-        echo "- Installing $url from $location"
-        rpm -ivh $location
-    done
+	echo "########################################################"
+	echo "#                 installing SRPMS                     #"
+	echo "########################################################"
+	for url in $SRPMS; do
+		echo "- Want to install $url"
+		rpm=$(basename $url)
+		location=/data/SRPMS/$rpm
+		if [ -e $location ]; then
+			echo "- Found cached $location for $url"
+		else
+			echo "- Downloading $url to $location"
+			( cd /data/SRPMS && wget $url )
+		fi
+		echo "- Installing $url from $location"
+		rpm -ivh $location
+	done
+	echo "- SRPMS installed:"
+	ls -l ~/rpmbuild/SOURCES/ ~/rpmbuild/SPECS
+	echo
+}
+
+# - just copy the file and log
+copy_file () {
+	local src=$1
+	local dst=$2
+
+	echo "- copying $src to $dst"
+	cp $src $dst
+}
+
+copy_files () {
+	local srcdir=$1
+	local dstdir=$2
+	local file
+
+	if [ -d $srcdir ]; then
+		for file in $srcdir/*; do
+			copy_file $file $dstdir/
+		done
+	fi
+}
+
+# install custom patches / sources for the specified build version if provided.
+# - assume running as $BUILD_USER user
+install_custom_patches () {
+	local version="$1"
+	local dir
+
+	if [ -d /data/config/$version ]; then
+		echo "- applying custom patches for $version"
+		for dir in SPECS SOURCES; do
+			copy_files /data/config/$version/$dir ~/rpmbuild/$dir
+		done
+	else
+		echo "- No custom patches to apply for $version"
+	fi
+}
+
+# Create missing directories
+create_missing_directories () {
+	local directories="/data/SRPMS"
+	local dir
+
+	for dir in $directories; do
+		if ! test -d $dir; then
+			echo "Creating missing directory: $dir"
+			mkdir -p $dir
+		fi
+	done
 }
 
 # build package
 # - FIXME (add signing)
-# - FIXME fix config to work with OS other than rhel8 / oel8
 rpmbuild_rpms () {
 	local timestamp=$(date +%Y%m%d.%H%M%S)
+	local label=${ID}.${VERSION_ID}__${mysql_build_version}__$timestamp
+
 	cd ~/rpmbuild/SPECS
-	rpmbuild --define 'el8 1' --define 'rhel 8' -ba mysql.spec 2>&1 | tee -a ~/log/mysql-build-$build_environment.$timestamp.log
+	# Careful with spacing and quoting!
+#	rpmbuild --define 'el8 '$BUILD_VERSION --define 'rhel '$BUILD_VERSION -ba mysql.spec 2>&1 | tee -a ~/log/mysql-build.$label.log
+	rpmbuild --define 'el8 '$BUILD_VERSION -ba mysql.spec 2>&1 | tee -a ~/log/build__$label.log
 	rc=$?
 
 	# If build is successful record the installed package list,
 	# or record the failed list as that may need fixing.
-	rpm_qa=~/log/rpm-qa.$build_environment.$timestamp
+	rpm_qa=~/log/rpm-qa.$label
 	if [ $rc = 0 ]; then
-        rpm -qa | sort > $rpm_qa
-    else
-        rpm -qa | sort > $rpm_qa.failed
+		rpm -qa | sort > $rpm_qa
+	else
+		rpm -qa | sort > $rpm_qa.failed
 	fi
 }
 
@@ -60,28 +144,65 @@ if [ -z "$USER" ]; then
 	USER=$(id -un)
 fi
 
-build_environment=$1
-if [ -z "$build_environment" ]; then
-	echo "please provide build_environment name, directory under config"
+mysql_build_version=$1
+if [ -z "$mysql_build_version" ]; then
+	echo "please provide mysql_build_version name, directory under config"
 	exit 1
 fi
+
+get_os_and_version
+create_missing_directories
 
 case "$USER" in
 root)
 	##########################
 	###    run as root     ###
 	##########################
-	echo "sourcing prepare script"
-	. /data/config/$build_environment/prepare.sh
-	prepare
+	location=$(grep ^prepare /data/config/build.conf | grep -w ${ID}.${BUILD_VERSION} | grep -w ${mysql_build_version} | awk '{ print $4 }')
+	if [ -n "$location" ]; then
+		location=/data/config/$location
+		if [ -e "$location" ]; then
+			echo "sourcing prepare script: $location"
+			. $location
+			prepare
+		else
+			echo "Missing prepare script $location to prepare operating system $NAME ($ID $VERSION_ID) to build MySQL version $mysql_build_version"
+			echo "BUILD_VERSION: $BUILD_VERSION"
+			echo "NAME: $NAME"
+			echo "ID: $ID"
+			echo "VERSION_ID: $VERSION_ID"
+			echo "mysql_build_version: $mysql_build_version"
+			exit 1
+		fi
+	else
+		echo "No OS prepare script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
+		exit 1
+	fi
 	;;
 $BUILD_USER)
 	##########################
 	### run as $BUILD_USER ###
 	##########################
-	echo "sourcing perform-build script"
-	. /data/config/$build_environment/build.sh 
-	build
+	location=$(grep ^build /data/config/build.conf | grep -w ${ID}.${BUILD_VERSION} | grep -w ${mysql_build_version} | awk '{ print $4 }')
+	if [ -n "$location" ]; then
+		location=/data/config/$location
+		if [ -e "$location" ]; then
+			echo "sourcing build script: $location"
+			. $location
+			build
+		else
+			echo "Missing build script in $location to build $mysql_build_version on $ID.${BUILD_VERSION}"
+			echo "BUILD_VERSION: $BUILD_VERSION"
+			echo "NAME: $NAME"
+			echo "ID: $ID"
+			echo "VERSION_ID: $VERSION_ID"
+			echo "mysql_build_version: $mysql_build_version"
+			exit 1
+		fi
+	else
+		echo "No rpm build script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
+		exit 1
+	fi
 	;;
 *)
 	echo "unexpected USER $USER, please call the script properly"
