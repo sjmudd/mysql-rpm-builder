@@ -1,6 +1,8 @@
 # MySQL rpm (re)builder
 
-## Trigger repeatable MySQL rpm builds from a src rpm.
+## Overview
+
+### Trigger repeatable MySQL rpm builds from a src rpm.
 
 This repo has two main purposes:
 - build binary rpms from the src.rpm in a repeatable manner ensuring the
@@ -37,7 +39,8 @@ This is clearly work in progress. If you have feedback to provide you
 can reach me at `sjmudd` at `pobox.com` or file an [issue](https://github.com/sjmudd/mysql-rpm-builder/issues/new)
 on github directly.
 
-Directory layout:
+## Directory Layout
+
 - `config/`           build configuration directory.
 - `config/build.conf` configuration file indicating which scripts should be
                       used for preparing the OS or building MySQL
@@ -53,8 +56,9 @@ Directory layout:
                       and reused later.
 - `log/`              log files of completed or failed builds.
 
-Build process:
-(1) Create docker container:
+## Build Process
+
+### (1) Create docker container:
 
 ```
 $ docker run --rm -it \
@@ -74,14 +78,14 @@ Current images are:
 - OEL 8: oraclelinux:8.7
 - Rocky Linux 8: rocky:8.7
 
-(2) Within docker container, as root run:
+### (2) Within docker container, as root run:
 
 ```
 # sh /data/build-environment.sh 8.0.33 # setup os as required for this version
 # su - rpmbuild                        # change to rpmbuild build user
 ```
 
-(3) Without exiting the shell perform the build
+### (3) Without exiting the shell perform the build
 
 ```
 # build 8.0.33 rpm from src.rpm configured in $SRPMS in the build script
@@ -89,6 +93,8 @@ Current images are:
 # present.
 $ sh build-environment.sh 8.0.33
 ```
+
+### Build in one go
 
 The **whole process** can now be done with a single command from the docker server:
 
@@ -100,6 +106,8 @@ $ docker run --rm -it \
         /data/build-environment.sh -a 8.0.33
 ```
 
+### Output and Logging
+
 If successful the final binary rpms should be found in
 `~/rpmbuild/RPMS/<arch>` and final src rpm should be found in
 `~/rpmbuild/SRPMS/`.
@@ -110,6 +118,8 @@ build_environment name and build start time in UTC.
 If successful the list of installed rpms required to peform the build
 is also recorded as this may change over time or if the build fails it is
 useful to share with others in case the installed rpms are not correct.
+
+## Patching
 
 If you want to patch any of the SRPMS this can be done by doing the
 following:
