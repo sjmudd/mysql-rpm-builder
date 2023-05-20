@@ -133,9 +133,9 @@ following:
 
 ## Warning on differences between different equivalent OS versions.
 
-I tend to use CentOS as the Linux flavour of interest. This is the
-unlicensed, fully GPL version of RedHat Enterprise Linux.  There are other
-similar flavours which were released after the unexpected termination of
+I tend to use [CentOS](centos.org) as the Linux flavour of interest. This is the
+unlicensed, fully GPL version of [RedHat Enterprise Linux](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux).
+There are other similar flavours which were released after the unexpected termination of
 CentOS 8 and its replacement with CentOS 8 Stream.  The intention of all
 these repos is to be equivalent, but in fact there are some differences
 and what may work on one OS may not work on the others at least without
