@@ -1,11 +1,11 @@
-# mysql rpm (re)builder
+# MySQL rpm (re)builder
 
-## Trigger repeatable rpm builds from a src rpm.
+## Trigger repeatable MySQL rpm builds from a src rpm.
 
 This repo has two main purposes:
 - build binary rpms from the src.rpm in a repeatable manner ensuring the
   exact build requirements are defined.
-  While rpm does have a BuildRequires section intended to provide the
+  While rpm does have a `BuildRequires:` section intended to provide the
   list of build dependencies often this is far from precise and it is
   often incomplte.  This can mean that if the your build environment is
   setup differently to mine you can build binary packages but I can not,
@@ -25,17 +25,17 @@ by upstream vendors may be far from complete and this had made building
 for a new OS or wanting to build the existing software with a specific
 patch much harder than expected.
 
-Given the OS (prepare.sh) and rpm build stages are triggered by explicit
-scripts, starting from a known initial state (the base docker image)
-the whole process is completely defined and should be repeatable.
+Given a known initial state, the bare OS from docker 2 stages (**prepare**)
+and (**rpm build**) are triggered by explicit scripts, and the whole
+process is completely defined and should be repeatable.
 
-A similar usage might happen when chaning from one major OS version to
+A similar usage might happen when changing from one major OS version to
 another or if changing from one major software version to another: all
 changes becomes much more visible.
 
 This is clearly work in progress. If you have feedback to provide you
-can reach me at sjmudd at pobox.com or file an issue on github directly.
-
+can reach me at `sjmudd` at `pobox.com` or file an [issue](https://github.com/sjmudd/mysql-rpm-builder/issues/new)
+on github directly.
 
 Directory layout:
 - config/            build configuration directory.
@@ -57,7 +57,11 @@ Build process:
 (1) Create docker container:
 
 ```
-$ docker run --rm -it --network=host --hostname=builder -v $PWD:/data quay.io/centos/centos:stream8
+$ docker run --rm -it \
+        --network=host \
+        --hostname=rpm-builder \
+        -v $PWD:/data \
+        quay.io/centos/centos:stream8
 ```
 or
 ```
@@ -86,10 +90,14 @@ Current images are:
 $ sh build-environment.sh 8.0.33
 ```
 
-The whole process can now be done with a single command from the docker server:
+The **whole process** can now be done with a single command from the docker server:
 
 ```
-$ docker run --rm -it --network=host --hostname=builder -v $PWD:/data quay.io/centos/centos:stream8 /data/build-environment.sh -a 8.0.33
+$ docker run --rm -it \
+        --network=host \
+        --hostname=rpm-builder \
+        -v $PWD:/data quay.io/centos/centos:stream8 \
+        /data/build-environment.sh -a 8.0.33
 ```
 
 If successful the final binary rpms should be found in
@@ -113,9 +121,27 @@ following:
   `/data/config/<version>/SPECS` directories as these will automatically
   be added after installing the `src.rpm`.
 
-**FIXME**: I should probably provide a mechanism for patching the mysql.spec
+## Warning on differences between different equivalent OS versions.
+
+I tend to use CentOS as the Linux flavour of interest. This is the
+unlicensed, fully GPL version of RedHat Enterprise Linux.  There are other
+similar flavours which were released after the unexpected termination of
+CentOS 8 and its replacement with CentOS 8 Stream.  The intention of all
+these repos is to be equivalent, but in fact there are some differences
+and what may work on one OS may not work on the others at least without
+some minimal changes.
+
+I have seen some differences between OL8 and CentOS 8 Stream with the
+names of additional repos used and it looks like CentOS 9 may have
+other differences with its _brothers_.  Most of this is easy to fix,
+but none of it is explicit, requiring you to make unexpected changes
+prior to being able to rebuild MySQL rpms.
+
+## TODO
+
+I should probably provide a mechanism for patching the `mysql.spec`
 file rather than replacing it completely as usually patches for a
 some minor change and this is more explicit than modifying the whole
-mysql.spec file.  This would also make it much easier to apply the same
+`mysql.spec` file.  This would also make it much easier to apply the same
 patch unmodified to different versions.  This change has not been done
 yet but may be added later.
