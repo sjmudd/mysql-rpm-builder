@@ -58,30 +58,50 @@ Directory layout:
 
 Build process:
 (1) Create docker container:
-    $ docker run --rm -it --network=host --hostname=builder -v $PWD:/data quay.io/centos/centos:stream
+    $ docker run --rm -it --network=host --hostname=builder -v $PWD:/data quay.io/centos/centos:stream8
         or
     $ ./start-docker-container.sh [<image_to_use>]
 
     Current images are:
+    - AlmaLinux 8: almalinux:8.7
     - CentOS 8 stream: quay.io/centos/centos:stream (default)
     - OEL 8: oraclelinux:8.7
+    - Rocky Linux 8: rocky:8.7
 
 (2) Within docker container, as root run:
-    # sh /data/build-environment.sh 8.0.32 # setup os as required
+    # sh /data/build-environment.sh 8.0.33 # setup os as required for this version
     # su - rpmbuild                        # change to rpmbuild build user
 
 (3) Without exiting the shell perform the build
-    # build 8.0.32 rpm from src.rpm configured in $SRPMS in
-    # /data/config/8.0.32/build.sh or cached copy in /data/SRPMS if present.
-    $ sh build-environment.sh 8.0.32
+    # build 8.0.33 rpm from src.rpm configured in $SRPMS in the build script
+    # configured in /data/config/build.conf or cached copy in /data/SRPMS if
+    # present.
+    $ sh build-environment.sh 8.0.33
 
 If successful the final binary rpms should be found in
 ~/rpmbuild/RPMS/<arch> and final src rpm should be found in
 ~/rpmbuild/SRPMS/.
 
-The build process will save logs in the ~/log directory, based off the
+The build process will save logs in the ~/log directory, based on the
 build_environment name and build start time in UTC.
 
 If successful the list of installed rpms required to peform the build
 is also recorded as this may change over time or if the build fails it is
 useful to share with others in case the installed rpms are not correct.
+
+If you want to patch any of the SRPMS this can be done by doing the
+following:
+- create a new version directory under /data/config for the special build
+- update /data/config/build.conf to refer to that version and the required
+  prepare or build scripts if they need to change.
+- add any required files to be placed in the ~/rpmbuild/SOURCES or
+  ~/rpmbuild/SPECS directories under /data/config/<version>/SOURCES or
+  /data/config/<version>/SPECS directories as these will automatically
+  be added after installing the src.rpm.
+
+FIXME: I should probably provide a mechanism for patching the mysql.spec
+file rather than replacing it completely as usually patches for a
+some minor change and this is more explicit than modifying the whole
+mysql.spec file.  This would also make it much easier to apply the same
+patch unmodified to different versions.  This change has not been done
+yet but may be added later.
