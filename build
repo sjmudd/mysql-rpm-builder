@@ -259,7 +259,7 @@ $BUILD_USER)
 			echo "- creating directory $final_location"
 			mkdir -p $final_location
 		fi
-		for file in ~/rpmbuild/SRPMS/*.srpm ~/rpmbuild/RPMS/*/*.rpm; do
+		for file in ~/rpmbuild/SRPMS/*.rpm ~/rpmbuild/RPMS/*/*.rpm; do
 			echo "- moving $file --> $final_location"
 			mv $file $final_location/
 		done
