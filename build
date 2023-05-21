@@ -254,7 +254,7 @@ $BUILD_USER)
 	if [ $rc = 0 ]; then
 		# Move built rpms to built location to ensure that they are kept
 		echo "### Build succeeded, moving rpms to /data/built"
-		final_location=~/data/built/${ID}.${BUILD_VERSION}__${mysql_build_version}
+		final_location=/data/built/${ID}.${BUILD_VERSION}__${mysql_build_version}
 		if [ ! -d $final_location ]; then
 			echo "- creating directory $final_location"
 			mkdir -p $final_location
