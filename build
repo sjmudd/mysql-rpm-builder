@@ -199,6 +199,7 @@ root)
 			echo "sourcing prepare script: $location"
 			. $location
 			prepare
+			setup_build_user
 		else
 			echo "Missing prepare script $location to prepare operating system $NAME ($ID $VERSION_ID) to build MySQL version $mysql_build_version"
 			echo "BUILD_VERSION: $BUILD_VERSION"

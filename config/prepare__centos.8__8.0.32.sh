@@ -3,13 +3,12 @@
 set -e
 
 prepare() {
-    setup_build_user
-
 	cd /data
+
 	yum update -y
 	yum install -y 'dnf-command(config-manager)'
 
-    # Handle OEL8 differences vs CentOS 8 stream
+	# Handle OEL8 differences vs CentOS 8 stream
 	if rpm -q oraclelinux-release 2>&1 >/dev/null; then
 		extra_repo=ol8_codeready_builder
 	else

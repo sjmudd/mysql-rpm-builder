@@ -3,9 +3,8 @@
 set -e
 
 prepare() {
-    setup_build_user
-
 	cd /data
+
 	yum update -y
 	yum install -y 'dnf-command(config-manager)'
 
