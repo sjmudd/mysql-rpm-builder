@@ -41,7 +41,7 @@ setup_build_user () {
 
 	for dir in $directories; do
 		if ! test -d $dir; then
-			echo "Creating missing directory: $dir, ownership set to $BUILD_USER"
+			echo "Creating missing directory: $dir, ownership set to $BUILD_USER:$BUILD_USER"
 			mkdir -p $dir
 			chown $BUILD_USER:$BUILD_USER $dir
 		fi
