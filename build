@@ -228,7 +228,7 @@ $BUILD_USER)
 	##########################
 	### run as $BUILD_USER ###
 	##########################
-	location=$(grep -w build $config | grep -w ${ID}.${BUILD_VERSION} | grep "^${mysql_build_version}[:space:]" | awk '{ print $4 }')
+	location=$(grep -w build $config | grep -w ${ID}.${BUILD_VERSION} | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
 
 	if [ -z "$location" ]; then
 		echo "No rpm build script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
