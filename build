@@ -30,10 +30,22 @@ setup_build_user () {
 	echo
 	if ! grep $BUILD_USER /etc/passwd; then
 		echo "### Adding missing build user: $BUILD_USER"
-		useradd --no-create-home -d /data $BUILD_USER
+		useradd -m $BUILD_USER
 	else
 		echo "### Required build user $BUILD_USER already present"
 	fi
+
+	# Create missing directories used for persisting data
+	local directories="/data/SRPMS /data/log /data/built"
+	local dir
+
+	for dir in $directories; do
+		if ! test -d $dir; then
+			echo "Creating missing directory: $dir, ownership set to $BUILD_USER"
+			mkdir -p $dir
+			chown $BUILD_USER $dir
+		fi
+	done
 }
 
 # Install the appropriate src.rpm from upstream sources
@@ -103,34 +115,23 @@ install_custom_patches () {
 	fi
 }
 
-# Create missing directories
-create_missing_directories () {
-	local directories="/data/SRPMS /data/log"
-	local dir
-
-	for dir in $directories; do
-		if ! test -d $dir; then
-			echo "Creating missing directory: $dir"
-			mkdir -p $dir
-		fi
-	done
-}
-
 # build package
 # - FIXME (add signing)
 rpmbuild_rpms () {
 	local timestamp=$(date +%Y%m%d.%H%M%S)
 	local label=${ID}.${VERSION_ID}__${mysql_build_version}__$timestamp
+	local logfile=/data/log/build__$label.log
 
 	cd ~/rpmbuild/SPECS
 	# Careful with spacing and quoting!
-#	rpmbuild --define 'el8 '$BUILD_VERSION --define 'rhel '$BUILD_VERSION -ba mysql.spec 2>&1 | tee -a ~/log/mysql-build.$label.log
-	rpmbuild --define 'el8 '$BUILD_VERSION -ba mysql.spec 2>&1 | tee -a ~/log/build__$label.log
+	echo "### Starting build at $(date)" >> $logfile
+	rpmbuild --define 'el'$BUILD_VERSION' 1' -ba mysql.spec 2>&1 | tee -a $logfile
 	rc=$?
+	echo "### Completed build at $(date) with exit status: $rc" >> $logfile
 
 	# If build is successful record the installed package list,
 	# or record the failed list as that may need fixing.
-	rpm_qa=~/log/rpm-qa.$label
+	rpm_qa=/data/log/rpm-qa.$label
 	if [ $rc = 0 ]; then
 		rpm -qa | sort > $rpm_qa
 	else
@@ -159,6 +160,7 @@ run_build_user_part () {
 	fi
 }
 
+config=/data/build.conf
 BUILD_USER=rpmbuild
 build_all=
 
@@ -185,14 +187,13 @@ if [ -z "$mysql_build_version" ]; then
 fi
 
 get_os_and_version
-create_missing_directories
 
 case "$USER" in
 root)
 	##########################
 	###    run as root     ###
 	##########################
-	location=$(grep ^prepare /data/config/build.conf | grep -w ${ID}.${BUILD_VERSION} | grep -w ${mysql_build_version} | awk '{ print $4 }')
+	location=$(grep -w prepare $config | grep -w ${ID}.${BUILD_VERSION} | grep -w ${mysql_build_version} | awk '{ print $4 }')
 	if [ -n "$location" ]; then
 		location=/data/config/$location
 		if [ -e "$location" ]; then
@@ -227,25 +228,42 @@ $BUILD_USER)
 	##########################
 	### run as $BUILD_USER ###
 	##########################
-	location=$(grep ^build /data/config/build.conf | grep -w ${ID}.${BUILD_VERSION} | grep -w ${mysql_build_version} | awk '{ print $4 }')
-	if [ -n "$location" ]; then
-		location=/data/config/$location
-		if [ -e "$location" ]; then
-			echo "sourcing build script: $location"
-			. $location
-			build
-		else
-			echo "Missing build script in $location to build $mysql_build_version on $ID.${BUILD_VERSION}"
-			echo "BUILD_VERSION: $BUILD_VERSION"
-			echo "NAME: $NAME"
-			echo "ID: $ID"
-			echo "VERSION_ID: $VERSION_ID"
-			echo "mysql_build_version: $mysql_build_version"
-			exit 1
-		fi
-	else
+	location=$(grep -w build $config | grep -w ${ID}.${BUILD_VERSION} | grep -w ${mysql_build_version} | awk '{ print $4 }')
+
+	if [ -z "$location" ]; then
 		echo "No rpm build script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
 		exit 1
+	fi
+
+	location=/data/config/$location
+	if [ ! -e "$location" ]; then
+		echo "Missing build script in $location to build $mysql_build_version on $ID.${BUILD_VERSION}"
+		echo "BUILD_VERSION: $BUILD_VERSION"
+		echo "NAME: $NAME"
+		echo "ID: $ID"
+		echo "VERSION_ID: $VERSION_ID"
+		echo "mysql_build_version: $mysql_build_version"
+		exit 1
+	fi
+
+	echo "sourcing build script: $location"
+	. $location
+	build
+
+	rc=$?
+	if [ $rc = 0 ]; then
+		# Move built rpms to built location to ensure that they are kept
+		echo "### Build succeeded, moving rpms to /data/built"
+		final_location=~/data/built/${ID}.${BUILD_VERSION}__${mysql_build_version}
+		if [ ! -d $final_location ]; then
+			echo "- creating directory $final_location"
+			mkdir -p $final_location
+		fi
+		for file in ~/rpmbuild/SRPMS/*.srpm ~/rpmbuild/RPMS/*/*.rpm; do
+			echo "- moving $file --> $final_location"
+			mv $file $final_location/
+		done
+		cp /etc/os-release $final_location/etc_os-release
 	fi
 	;;
 *)

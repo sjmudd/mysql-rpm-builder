@@ -41,58 +41,21 @@ on github directly.
 
 ## Directory Layout
 
+- `build.conf`        configuration file for `build` indicating which scripts
+                      should be used for preparing the OS or building MySQL.
+- `built/`            directory containing built rpms.
 - `config/`           build configuration directory.
-- `config/build.conf` configuration file indicating which scripts should be
-                      used for preparing the OS or building MySQL
 - `config/<VERSION>`  an optional directory of `SOURCES/` or `SPECS/` override
                       files when building the rpm. These files will be placed
                       in the appropriate directory after instaling the given
                       `.src.rpm` file, allowing build configuration to be
                       modified fromt he original src.rpm files.
-- `rpmbuild/`         directory is for building rpms for the non-root build
-                      user.
 - `SRPMS/`            cached or non-cached `SRPMS` files. If configured the
                       `SRPMS` may be downloaded here from an external site once
                       and reused later.
 - `log/`              log files of completed or failed builds.
 
 ## Build Process
-
-### (1) Create docker container:
-
-```
-$ docker run --rm -it \
-        --network=host \
-        --hostname=rpm-builder \
-        -v $PWD:/data \
-        quay.io/centos/centos:stream8
-```
-or
-```
-$ ./start-docker-container.sh [<image_to_use>]
-```
-
-Current images are:
-- AlmaLinux 8: almalinux:8.7
-- CentOS 8 stream: quay.io/centos/centos:stream (default)
-- OEL 8: oraclelinux:8.7
-- Rocky Linux 8: rocky:8.7
-
-### (2) Within docker container, as root run:
-
-```
-# sh /data/build 8.0.33 # setup os as required for this version
-# su - rpmbuild                        # change to rpmbuild build user
-```
-
-### (3) Without exiting the shell perform the build
-
-```
-# build 8.0.33 rpm from src.rpm configured in $SRPMS in the build script
-# configured in /data/config/build.conf or cached copy in /data/SRPMS if
-# present.
-$ sh build 8.0.33
-```
 
 ### Build in one go
 
@@ -106,16 +69,62 @@ $ docker run --rm -it \
         /data/build -a 8.0.33
 ```
 
+However, if the process fails you won't have access to the state of the build
+at the moment it fails. If you need to verify what breaks go through the
+3 below steps individually.
+
+### Building in individual steps
+
+Alternatively it can be done in 3 steps as indicated below
+
+#### Create docker container:
+
+```
+$ docker run --rm -it \
+        --network=host \
+        --hostname=rpm-builder \
+        -v $PWD:/data \
+        quay.io/centos/centos:stream8 \
+	bash
+```
+or
+```
+$ ./start-docker-container.sh [<image_to_use>]
+```
+
+Current images are:
+- AlmaLinux 8: almalinux:8.7
+- CentOS 8 stream: quay.io/centos/centos:stream (default)
+- OEL 8: oraclelinux:8.7
+- Rocky Linux 8: rocky:8.7
+
+#### Within docker container, as root run:
+
+```
+# sh /data/build 8.0.33 # setup os as required for this version
+# su - rpmbuild         # change to rpmbuild build user
+```
+
+#### Without exiting the shell perform the build
+
+```
+# build 8.0.33 rpm from src.rpm configured in $SRPMS in the build script
+# configured in /data/config/build.conf or cached copy in /data/SRPMS if
+# present.
+$ sh /data/build 8.0.33
+```
+
 ### Output and Logging
 
 If successful the final binary rpms should be found in
-`~/rpmbuild/RPMS/<arch>` and final src rpm should be found in
-`~/rpmbuild/SRPMS/`.
+`/data/built/` under the OS / MySQL configuration name that had been
+configured.
 
-The build process will save logs in the `~/log` directory, based on the
-build_environment name and build start time in UTC.
+The build process will save logs in the `/data/log` directory, based on
+the mysql version configuration specified and the OS found. Logging is
+in UTC.
 
-If successful the list of installed rpms required to peform the build
+If successful the list of installed rpms required to perform the build
 is also recorded as this may change over time or if the build fails it is
 useful to share with others in case the installed rpms are not correct.
 
