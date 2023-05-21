@@ -171,16 +171,17 @@ be signifcant.
 
 ## Related thoughts.
 
-None of what is done here is specific to MySQL apart and these scripts
-could be used for building other packages following the same philosophy.
+None of what is done here is specific to MySQL so these scripts could
+be used for building other packages following the same philosophy.
 
-Others may ask why I build from the src.rpm files and not directly
-from the git repo (in the case of MySQL). That might be an interesting
-addition to the tooling as in the same way that explicit documentation
-on the build process from src.rpms to binary rpms is often missign the
-same explict instructions for triggering repeatable builds from the
-git tree may be applicable. As the git trees of many packages are the
-ultimate source using those is clearly better.
+Others may ask why I build from the src.rpm files and not directly from
+the git repo (in the case of MySQL). That might be an interesting addition
+to the tooling as in the same way that explicit documentation on the build
+process from src.rpms to binary rpms is often missing the same explict
+instructions for triggering repeatable rpm builds from the git tree may
+be applicable. [Here](https://github.com/sjmudd/bacula-rpm-builder/) is
+an example of that.   As the git trees of many packages are the ultimate
+source using those is clearly better.
 
 ## TODO
 
