@@ -163,10 +163,11 @@ I normally do this very rarely.  I have also done this from the git
 source tree provided by Oracle.
 
 The rpm rebuild times seem to be quite a long longer. This is I believe
-because both the normal and debug builds take place making the process
-much longer. On a home system I have (Beelink SER 4700u) this takes
-about 2-3 hours.  The C/C++ build process reads and writes a lot to the
-filesystem so storage latency may be signifcant.
+because both the normal and debug builds take place increasing the build
+times. On a home system I have (Beelink SER 4700u) this takes about 2h
+45m using a NAS vs 1h 20m using local nvme storage.  The C/C++ build
+process reads and writes a lot to the filesystem so storage latency can
+be signifcant.
 
 ## Related thoughts.
 
