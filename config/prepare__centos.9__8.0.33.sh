@@ -1,15 +1,10 @@
 #!/bin/sh
-#
-# build environment for to build MySQL
-# - build the root part, sourced from build-environment.sh
-#
 
 set -e
 
 prepare() {
-	setup_build_user
-
 	cd /data
+
 	yum update -y
 	yum install -y 'dnf-command(config-manager)'
 
@@ -40,14 +35,13 @@ prepare() {
 		perl-JSON rpcgen \
 		rpm-build \
 		time \
-	        gcc-toolset-12-annobin-annocheck \
-	        gcc-toolset-12-annobin-plugin-gcc \
-	        gcc-toolset-12-binutils  \
-	        gcc-toolset-12-gcc \
-	        gcc-toolset-12-gcc-c++ \
-		wget
-
-#########	dnf groupinstall -y "Development Tools"
+		gcc-toolset-12-annobin-annocheck \
+		gcc-toolset-12-annobin-plugin-gcc \
+		gcc-toolset-12-binutils  \
+		gcc-toolset-12-gcc \
+		gcc-toolset-12-gcc-c++ \
+		wget \
+		zlib-devel
 
 	echo "########################################################"
 	echo "#           os preparation complete                    #"

@@ -14,5 +14,5 @@
 image=${1:-quay.io/centos/centos:stream8}
 shift
 
-echo "Starting mysql-rpm-builder using image: $image $*"
+echo "Starting mysql-rpm-builder using image: $image and parameters $*"
 docker run --rm -it --network=host --hostname=mysql-builder -v $PWD:/data $image $*

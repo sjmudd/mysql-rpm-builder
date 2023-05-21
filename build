@@ -20,14 +20,6 @@ get_os_and_version () {
 }
 
 setup_build_user () {
-	local name="$NAME ($ID $VERSION_ID)"
-
-	echo "########################################################"
-	echo "#                       Preparing                      #"
-	echo "#                 $NAME ($ID $VERSION_ID)"
-	echo "#                  for building rpms                   #"
-	echo "########################################################"
-	echo
 	if ! grep $BUILD_USER /etc/passwd; then
 		echo "### Adding missing build user: $BUILD_USER"
 		useradd -m $BUILD_USER
@@ -193,12 +185,19 @@ root)
 	##########################
 	###    run as root     ###
 	##########################
-	location=$(grep -w prepare $config | grep -w ${ID}.${BUILD_VERSION} | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
-	if [ -n "$location" ]; then
-		location=/data/config/$location
-		if [ -e "$location" ]; then
-			echo "sourcing prepare script: $location"
-			. $location
+	prepare_script=$(grep -w prepare $config | grep -w ${ID}.${BUILD_VERSION} | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
+	if [ -n "$prepare_script" ]; then
+		prepare_script=/data/config/$prepare_script
+		if [ -e "$prepare_script" ]; then
+			echo "########################################################"
+			echo "#                       Preparing                      #"
+			echo "#                 $NAME ($ID $VERSION_ID)"
+			echo "#                  for building rpms                   #"
+			echo "########################################################"
+			echo
+			echo "sourcing prepare script: $prepare_script"
+			. $prepare_script
+
 			prepare
 			setup_build_user
 		else
@@ -228,16 +227,16 @@ $BUILD_USER)
 	##########################
 	### run as $BUILD_USER ###
 	##########################
-	location=$(grep -w build $config | grep -w ${ID}.${BUILD_VERSION} | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
+	build_script=$(grep -w build $config | grep -w ${ID}.${BUILD_VERSION} | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
 
-	if [ -z "$location" ]; then
+	if [ -z "$build_script" ]; then
 		echo "No rpm build script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
 		exit 1
 	fi
 
-	location=/data/config/$location
-	if [ ! -e "$location" ]; then
-		echo "Missing build script in $location to build $mysql_build_version on $ID.${BUILD_VERSION}"
+	build_script=/data/config/$build_script
+	if [ ! -e "$build_script" ]; then
+		echo "Missing build script in $build_script to build $mysql_build_version on $ID.${BUILD_VERSION}"
 		echo "BUILD_VERSION: $BUILD_VERSION"
 		echo "NAME: $NAME"
 		echo "ID: $ID"
@@ -246,8 +245,8 @@ $BUILD_USER)
 		exit 1
 	fi
 
-	echo "sourcing build script: $location"
-	. $location
+	echo "sourcing build script: $build_script"
+	. $build_script
 	build
 
 	rc=$?
