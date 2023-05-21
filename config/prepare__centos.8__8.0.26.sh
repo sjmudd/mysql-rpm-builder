@@ -1,8 +1,4 @@
 #!/bin/sh
-#
-# build environment for to build MySQL
-# - build the root part, sourced from build-environment.sh
-#
 
 set -e
 

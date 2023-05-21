@@ -53,7 +53,7 @@ install_srpms () {
 		rpm=$(basename $url)
 		location=/data/SRPMS/$rpm
 		if [ -e $location ]; then
-			echo "- Found cached $location for $url"
+			echo "- Found cached $location"
 		else
 			echo "- Downloading $url to $location"
 			( cd /data/SRPMS && wget $url )
@@ -150,7 +150,7 @@ run_build_user_part () {
 	else
 		echo "Continue the build as $BUILD_USER by doing:"
 		echo
-		echo "    su - $BUILD_USER /data/build-environment.sh $mysql_build_version"
+		echo "    su - $BUILD_USER /data/build $mysql_build_version"
 		echo
 		echo "or rerun the complete process in one go with:"
 		echo

@@ -81,7 +81,7 @@ Current images are:
 ### (2) Within docker container, as root run:
 
 ```
-# sh /data/build-environment.sh 8.0.33 # setup os as required for this version
+# sh /data/build 8.0.33 # setup os as required for this version
 # su - rpmbuild                        # change to rpmbuild build user
 ```
 
@@ -91,7 +91,7 @@ Current images are:
 # build 8.0.33 rpm from src.rpm configured in $SRPMS in the build script
 # configured in /data/config/build.conf or cached copy in /data/SRPMS if
 # present.
-$ sh build-environment.sh 8.0.33
+$ sh build 8.0.33
 ```
 
 ### Build in one go
@@ -103,7 +103,7 @@ $ docker run --rm -it \
         --network=host \
         --hostname=rpm-builder \
         -v $PWD:/data quay.io/centos/centos:stream8 \
-        /data/build-environment.sh -a 8.0.33
+        /data/build -a 8.0.33
 ```
 
 ### Output and Logging
