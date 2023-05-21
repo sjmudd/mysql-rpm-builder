@@ -165,9 +165,21 @@ source tree provided by Oracle.
 The rpm rebuild times seem to be quite a long longer. This is I believe
 because both the normal and debug builds take place making the process
 much longer. On a home system I have (SER 4700u) this takes about 2-3
-hours, though may be partially slowed down by not using fast local
-storage, but an external NFS NAS.  The C/C++ build process reads and
-writes a lot to the filesystem so storage latency may be signifcant.
+hours.  The C/C++ build process reads and writes a lot to the filesystem
+so storage latency may be signifcant.
+
+## Related thoughts.
+
+None of what is done here is specific to MySQL apart and these scripts
+could be used for building other packages following the same philosophy.
+
+Others may ask why I build from the src.rpm files and not directly
+from the git repo (in the case of MySQL). That might be an interesting
+addition to the tooling as in the same way that explicit documentation
+on the build process from src.rpms to binary rpms is often missign the
+same explict instructions for triggering repeatable builds from the
+git tree may be applicable. As the git trees of many packages are the
+ultimate source using those is clearly better.
 
 ## TODO
 
