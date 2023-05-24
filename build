@@ -91,6 +91,14 @@ copy_files () {
 	fi
 }
 
+
+# count files in a directory to avoid glob matching failing
+files_in_dir () {
+	local dir=$1
+
+	find $dir -type f -name "*patch*" | wc -l | sed -e 's/[[:space:]]*//g'
+}
+
 # install custom patches / sources for the specified build version if provided.
 # - assume running as $BUILD_USER user
 install_custom_patches () {
@@ -100,11 +108,29 @@ install_custom_patches () {
 	if [ -d /data/config/$version ]; then
 		echo "- applying custom patches for $version"
 		for dir in SPECS SOURCES; do
-			copy_files /data/config/$version/$dir ~/rpmbuild/$dir
+			if [ $(files_in_dir $dir) != 0 ]; then
+				copy_files /data/config/$version/$dir ~/rpmbuild/$dir
+			fi
 		done
+		# applying patches if present to spec file
+		# - applied in filesort order
+		if [ $(files_in_dir ~/rpmbuild/SPECS) != 0 ]; then
+			for file in ~/rpmbuild/SPECS/*patch*; do
+				echo "- applying patch: $file"
+				( cd ~/rpmbuild/SPECS && patch -p0 < $file )
+			done
+		fi
+
 	else
 		echo "- No custom patches to apply for $version"
 	fi
+}
+
+# return the src rpm location based on the build version / OS we are building
+get_srpm_location () {
+	location=$(grep ^$mysql_build_version /data/build.conf | grep -w build | grep -w ${ID}.${BUILD_VERSION} | awk '{ print $5 }')
+
+	echo $location
 }
 
 # build package
@@ -134,22 +160,24 @@ rpmbuild_rpms () {
 # Complete the rpm build part if requested.
 # - if not indicate how to proceed
 run_build_user_part () {
-	if [ -n "$build_all" ]; then
-		echo "##############################################################"
-		echo "#  switching to user $BUILD_USER to complete the rpm build"
-		echo "##############################################################"
-		echo
-		su - $BUILD_USER $0 $mysql_build_version
-	else
+	if [ -z "$build_all" ]; then
 		echo "Continue the build as $BUILD_USER by doing:"
 		echo
 		echo "    su - $BUILD_USER /data/build $mysql_build_version"
 		echo
-		echo "or rerun the complete process in one go with:"
+		echo "Alternatively rerun the complete process in one go with:"
 		echo
 		echo "    $0 -a $mysql_build_version"
 		echo
+		exit 0
 	fi
+
+
+	echo "##############################################################"
+	echo "#  Switching to user $BUILD_USER to complete the rpm build"
+	echo "##############################################################"
+	echo
+	su - $BUILD_USER $0 $mysql_build_version
 }
 
 config=/data/build.conf
@@ -186,38 +214,37 @@ root)
 	###    run as root     ###
 	##########################
 	prepare_script=$(grep -w prepare $config | grep -w ${ID}.${BUILD_VERSION} | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
-	if [ -n "$prepare_script" ]; then
-		prepare_script=/data/config/$prepare_script
-		if [ -e "$prepare_script" ]; then
-			echo "########################################################"
-			echo "#                       Preparing                      #"
-			echo "#                 $NAME ($ID $VERSION_ID)"
-			echo "#                  for building rpms                   #"
-			echo "########################################################"
-			echo
-			echo "sourcing prepare script: $prepare_script"
-			. $prepare_script
-
-			prepare
-			setup_build_user
-		else
-			echo "Missing prepare script $location to prepare operating system $NAME ($ID $VERSION_ID) to build MySQL version $mysql_build_version"
-			echo "BUILD_VERSION: $BUILD_VERSION"
-			echo "NAME: $NAME"
-			echo "ID: $ID"
-			echo "VERSION_ID: $VERSION_ID"
-			echo "mysql_build_version: $mysql_build_version"
-			exit 1
-		fi
-	else
+	if [ -z "$prepare_script" ]; then
 		echo "No OS prepare script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
 		exit 1
 	fi
 
+	prepare_script=/data/config/$prepare_script
+	if [ ! -e "$prepare_script" ]; then
+		echo "Missing prepare script $location to prepare operating system $NAME ($ID $VERSION_ID) to build MySQL version $mysql_build_version"
+		echo "BUILD_VERSION: $BUILD_VERSION"
+		echo "NAME: $NAME"
+		echo "ID: $ID"
+		echo "VERSION_ID: $VERSION_ID"
+		echo "mysql_build_version: $mysql_build_version"
+		exit 1
+	fi
+
+	echo "########################################################"
+	echo "#    Preparing OS: $NAME ($ID $VERSION_ID)"
+	echo "#    for building rpms with label $mysql_build_version"
+	echo "########################################################"
+	echo
+	echo "sourcing prepare script: $prepare_script"
+	. $prepare_script
+
+	prepare
+	setup_build_user
+
 	echo
 	echo "########################################################"
-	echo "#              os preparation complete for             #"
-	echo "#                 $NAME ($ID $VERSION_ID)"
+	echo "#    Completed OS: $NAME ($ID $VERSION_ID) preparation"
+	echo "#    for building rpms with label $mysql_build_version"
 	echo "########################################################"
 	echo
 
