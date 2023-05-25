@@ -3,6 +3,17 @@
 # build environment for building MySQL from src.rpms
 #
 
+myname=$(basename $0)
+
+log () {
+	echo "$(date +'%Y-%m-%d %H:%M:%S') $myname[$$]: $@"
+}
+
+exit_error () {
+	log "ERROR: $@"
+	exit 1
+}
+
 get_os_and_version () {
 	if [ -z "$ID" ]; then
 		. /etc/os-release
@@ -13,18 +24,17 @@ get_os_and_version () {
 			BUILD_VERSION=$(echo $VERSION_ID | sed -e 's/\..*//')
 			;;
 		*)
-			echo "Unrecognised OS: $NAME ($ID $VERSION_ID). Provide a patch to support your linux version if needed."
-			exit 1
+			exit_error "Unrecognised OS: $NAME ($ID $VERSION_ID). Provide a patch to support your linux version if needed."
 		esac
 	fi
 }
 
 setup_build_user () {
 	if ! grep $BUILD_USER /etc/passwd; then
-		echo "### Adding missing build user: $BUILD_USER"
+		log "### Adding missing build user: $BUILD_USER"
 		useradd -m $BUILD_USER
 	else
-		echo "### Required build user $BUILD_USER already present"
+		log "### Required build user $BUILD_USER already present"
 	fi
 
 	# Create missing directories used for persisting data
@@ -33,7 +43,7 @@ setup_build_user () {
 
 	for dir in $directories; do
 		if ! test -d $dir; then
-			echo "Creating missing directory: $dir, ownership set to $BUILD_USER:$BUILD_USER"
+			log "Creating missing directory: $dir, ownership set to $BUILD_USER:$BUILD_USER"
 			mkdir -p $dir
 			chown $BUILD_USER:$BUILD_USER $dir
 		fi
@@ -48,24 +58,24 @@ install_srpms () {
 	local rpm
 	local url
 
-	echo "########################################################"
-	echo "#                 installing SRPMS                     #"
-	echo "########################################################"
+	log "########################################################"
+	log "#                 Installing SRPMS                     #"
+	log "########################################################"
 	echo
 	for url in $SRPMS; do
-		echo "- Want to install $url"
+		log "- Want to install $url"
 		rpm=$(basename $url)
 		location=/data/SRPMS/$rpm
 		if [ -e $location ]; then
-			echo "- Found cached $location"
+			log "- Found cached $location"
 		else
-			echo "- Downloading $url to $location"
+			log "- Downloading $url to $location"
 			( cd /data/SRPMS && wget $url )
 		fi
-		echo "- Installing $url from $location"
+		log "- Installing $url from $location"
 		rpm -ivh $location
 	done
-	echo "- SRPMS installed:"
+	log "- SRPMS installed:"
 	ls -l ~/rpmbuild/SOURCES/ ~/rpmbuild/SPECS
 	echo
 }
@@ -75,7 +85,7 @@ copy_file () {
 	local src=$1
 	local dst=$2
 
-	echo "- copying $src to $dst"
+	log "- copying $src to $dst"
 	cp $src $dst
 }
 
@@ -91,14 +101,6 @@ copy_files () {
 	fi
 }
 
-
-# count files in a directory to avoid glob matching failing
-files_in_dir () {
-	local dir=$1
-
-	find $dir -type f -name "*patch*" | wc -l | sed -e 's/[[:space:]]*//g'
-}
-
 # install custom patches / sources for the specified build version if provided.
 # - assume running as $BUILD_USER user
 install_custom_patches () {
@@ -106,23 +108,23 @@ install_custom_patches () {
 	local dir
 
 	if [ -d /data/config/$version ]; then
-		echo "- applying custom patches for $version"
+		log "- applying custom patches for $version"
 		for dir in SPECS SOURCES; do
-			if [ $(files_in_dir $dir) != 0 ]; then
+			if [ $(find /data/config/$version/$dir -type f | wc -l) != 0 ]; then
 				copy_files /data/config/$version/$dir ~/rpmbuild/$dir
 			fi
 		done
 		# applying patches if present to spec file
 		# - applied in filesort order
-		if [ $(files_in_dir ~/rpmbuild/SPECS) != 0 ]; then
+		if [ $(find ~/rpmbuild/SPECS -type f -name "*patch*" | wc -l) != 0 ]; then
 			for file in ~/rpmbuild/SPECS/*patch*; do
-				echo "- applying patch: $file"
+				log "- applying patch: $file"
 				( cd ~/rpmbuild/SPECS && patch -p0 < $file )
 			done
 		fi
 
 	else
-		echo "- No custom patches to apply for $version"
+		log "- No custom patches to apply for $version"
 	fi
 }
 
@@ -136,16 +138,16 @@ get_srpm_location () {
 # build package
 # - FIXME (add signing)
 rpmbuild_rpms () {
-	local timestamp=$(date +%Y%m%d.%H%M%S)
-	local label=${ID}.${VERSION_ID}__${mysql_build_version}__$timestamp
-	local logfile=/data/log/build__$label.log
+	local label=${ID}.${VERSION_ID}__${mysql_build_version}__$(date +%Y%m%d.%H%M%S)
 
 	cd ~/rpmbuild/SPECS
 	# Careful with spacing and quoting!
-	echo "### Starting build at $(date)" >> $logfile
-	rpmbuild --define 'el'$BUILD_VERSION' 1' -ba mysql.spec 2>&1 | tee -a $logfile
+	log "### rpmbuild started at $(date)"
+	set -x
+	rpmbuild --define 'el'$BUILD_VERSION' 1' -ba mysql.spec
 	rc=$?
-	echo "### Completed build at $(date) with exit status: $rc" >> $logfile
+	set +x
+	log "### rpmbuild terminated at $(date), exit status: $rc"
 
 	# If build is successful record the installed package list,
 	# or record the failed list as that may need fixing.
@@ -155,29 +157,128 @@ rpmbuild_rpms () {
 	else
 		rpm -qa | sort > $rpm_qa.failed
 	fi
+
+	return $rc
 }
 
-# Complete the rpm build part if requested.
-# - if not indicate how to proceed
-run_build_user_part () {
+
+# run the BUILD_USER stage: build rpms as the build user.
+build_rpm_stage () {
+	set -o pipefail
+	local logfile=/data/log/build__${label}.log
+
+	log "Sending build logging to $logfile"
+	build_rpm_stage_logged 2>&1 | tee -a $logfile
+}
+
+# run the BUILD_USER stage with logging enabled
+build_rpm_stage_logged () {
+	log "### Starting build stage at $(date)"
+
+	build_script=$(grep -w build $config | grep -w ${ID}.${BUILD_VERSION} | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
+
+	if [ -z "$build_script" ]; then
+		exit_error "No rpm build script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
+	fi
+
+	build_script=/data/config/$build_script
+	if [ ! -e "$build_script" ]; then
+		log "Missing build script in $build_script to build $mysql_build_version on $ID.${BUILD_VERSION}"
+		log "BUILD_VERSION: $BUILD_VERSION"
+		log "NAME: $NAME"
+		log "ID: $ID"
+		log "VERSION_ID: $VERSION_ID"
+		log "mysql_build_version: $mysql_build_version"
+		exit 1
+	fi
+
+	log "Sourcing build script: $build_script"
+	. $build_script
+	build
+
+	rc=$?
+	if [ $rc = 0 ]; then
+		# Move built rpms to built location to ensure that they are kept
+		log "### Build succeeded, moving rpms to /data/built"
+		final_location=/data/built/${ID}.${BUILD_VERSION}__${mysql_build_version}
+		if [ ! -d $final_location ]; then
+			log "- creating directory $final_location"
+			mkdir -p $final_location
+		fi
+		for file in ~/rpmbuild/SRPMS/*.rpm ~/rpmbuild/RPMS/*/*.rpm; do
+			log "- moving $file --> $final_location"
+			mv $file $final_location/
+		done
+		cp /etc/os-release $final_location/etc_os-release
+	fi
+
+	log "### Completed build stage at $(date) in $SECONDS seconds with exit status: $rc"
+}
+
+# run the root user stage: prepare the OS for the build
+prepare_stage () {
+	local logfile=/data/log/prepare__${label}.log
+
+	log "Sending prepare logging to $logfile"
+	set -o pipefail
+	prepare_stage_logged 2>&1 | tee -a $logfile
+	log "prepare_stage_logged took $SECONDS seconds to run" | tee -a $logfile
+
+	# Complete the rpm build part if requested.
+	# - if not indicate how to proceed
 	if [ -z "$build_all" ]; then
-		echo "Continue the build as $BUILD_USER by doing:"
-		echo
-		echo "    su - $BUILD_USER /data/build $mysql_build_version"
-		echo
-		echo "Alternatively rerun the complete process in one go with:"
-		echo
-		echo "    $0 -a $mysql_build_version"
-		echo
+		log "Continue the build as $BUILD_USER by doing:"
+		log
+		log "    su - $BUILD_USER /data/build $mysql_build_version"
+		log
+		log "Alternatively rerun the complete process in one go with:"
+		log
+		log "    $0 -a $mysql_build_version"
+		log
 		exit 0
 	fi
 
-
-	echo "##############################################################"
-	echo "#  Switching to user $BUILD_USER to complete the rpm build"
-	echo "##############################################################"
+	log "##############################################################"
+	log "#  Switching to user $BUILD_USER to complete the rpm build"
+	log "##############################################################"
 	echo
 	su - $BUILD_USER $0 $mysql_build_version
+}
+
+prepare_stage_logged () {
+	prepare_script=$(grep -w prepare $config | grep -w ${ID}.${BUILD_VERSION} | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
+	if [ -z "$prepare_script" ]; then
+		exit_error "No OS prepare script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
+	fi
+
+	prepare_script=/data/config/$prepare_script
+	if [ ! -e "$prepare_script" ]; then
+		log "Missing prepare script $location to prepare operating system $NAME ($ID $VERSION_ID) to build MySQL version $mysql_build_version"
+		log "BUILD_VERSION: $BUILD_VERSION"
+		log "NAME: $NAME"
+		log "ID: $ID"
+		log "VERSION_ID: $VERSION_ID"
+		log "mysql_build_version: $mysql_build_version"
+		exit 1
+	fi
+
+	log "########################################################"
+	log "#    Preparing OS: $NAME ($ID $VERSION_ID)"
+	log "#    for building rpms with label $mysql_build_version"
+	log "########################################################"
+	echo
+	log "Sourcing prepare script: $prepare_script"
+	. $prepare_script
+
+	prepare
+	setup_build_user
+
+	log
+	log "########################################################"
+	log "#    Completed OS: $NAME ($ID $VERSION_ID) preparation"
+	log "#    for building rpms with label $mysql_build_version"
+	log "########################################################"
+	echo
 }
 
 config=/data/build.conf
@@ -190,109 +291,26 @@ if [ -z "$USER" ]; then
 	USER=$(id -un)
 fi
 
-while getopts a flag; do
+while getopts an flag; do
 	case $flag in
-	a)	build_all=1
-		;;
-	*)	echo "INVALID FLAG $flag"
-		exit 1
+	a)	build_all=1 ;;
+	n)	build_all= ;;
+	*)	exit_error "INVALID FLAG $flag"
 	esac
 done
 shift $(($OPTIND - 1))
 
 mysql_build_version=$1
 if [ -z "$mysql_build_version" ]; then
-	echo "please provide mysql_build_version name, directory under config"
-	exit 1
+	exit_error "Please provide mysql_build_version name"
 fi
 
 get_os_and_version
+# Used for logging
+label=${mysql_build_version}__${ID}.${VERSION_ID}__$(date +%Y%m%d.%H%M%S)
 
 case "$USER" in
-root)
-	##########################
-	###    run as root     ###
-	##########################
-	prepare_script=$(grep -w prepare $config | grep -w ${ID}.${BUILD_VERSION} | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
-	if [ -z "$prepare_script" ]; then
-		echo "No OS prepare script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
-		exit 1
-	fi
-
-	prepare_script=/data/config/$prepare_script
-	if [ ! -e "$prepare_script" ]; then
-		echo "Missing prepare script $location to prepare operating system $NAME ($ID $VERSION_ID) to build MySQL version $mysql_build_version"
-		echo "BUILD_VERSION: $BUILD_VERSION"
-		echo "NAME: $NAME"
-		echo "ID: $ID"
-		echo "VERSION_ID: $VERSION_ID"
-		echo "mysql_build_version: $mysql_build_version"
-		exit 1
-	fi
-
-	echo "########################################################"
-	echo "#    Preparing OS: $NAME ($ID $VERSION_ID)"
-	echo "#    for building rpms with label $mysql_build_version"
-	echo "########################################################"
-	echo
-	echo "sourcing prepare script: $prepare_script"
-	. $prepare_script
-
-	prepare
-	setup_build_user
-
-	echo
-	echo "########################################################"
-	echo "#    Completed OS: $NAME ($ID $VERSION_ID) preparation"
-	echo "#    for building rpms with label $mysql_build_version"
-	echo "########################################################"
-	echo
-
-	run_build_user_part
-	;;
-$BUILD_USER)
-	##########################
-	### run as $BUILD_USER ###
-	##########################
-	build_script=$(grep -w build $config | grep -w ${ID}.${BUILD_VERSION} | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
-
-	if [ -z "$build_script" ]; then
-		echo "No rpm build script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
-		exit 1
-	fi
-
-	build_script=/data/config/$build_script
-	if [ ! -e "$build_script" ]; then
-		echo "Missing build script in $build_script to build $mysql_build_version on $ID.${BUILD_VERSION}"
-		echo "BUILD_VERSION: $BUILD_VERSION"
-		echo "NAME: $NAME"
-		echo "ID: $ID"
-		echo "VERSION_ID: $VERSION_ID"
-		echo "mysql_build_version: $mysql_build_version"
-		exit 1
-	fi
-
-	echo "sourcing build script: $build_script"
-	. $build_script
-	build
-
-	rc=$?
-	if [ $rc = 0 ]; then
-		# Move built rpms to built location to ensure that they are kept
-		echo "### Build succeeded, moving rpms to /data/built"
-		final_location=/data/built/${ID}.${BUILD_VERSION}__${mysql_build_version}
-		if [ ! -d $final_location ]; then
-			echo "- creating directory $final_location"
-			mkdir -p $final_location
-		fi
-		for file in ~/rpmbuild/SRPMS/*.rpm ~/rpmbuild/RPMS/*/*.rpm; do
-			echo "- moving $file --> $final_location"
-			mv $file $final_location/
-		done
-		cp /etc/os-release $final_location/etc_os-release
-	fi
-	;;
-*)
-	echo "unexpected USER $USER, please call the script properly"
-	exit 1
+root)		prepare_stage;;
+$BUILD_USER)	build_rpm_stage;;
+*)		exit_error "unexpected USER $USER, please call the script properly"
 esac
