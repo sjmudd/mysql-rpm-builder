@@ -17,7 +17,7 @@ prepare() {
 	echo "### Enabling extra repo: $extra_repo"
 	yum config-manager --set-enabled $extra_repo
 
-	echo "### installing required rpms"
+	echo "### Installing required rpms"
 	yum install -y \
 		bind-utils \
 		bison \
@@ -41,18 +41,18 @@ prepare() {
 		wget
 	# patch gcc-toolset to avoid build problems
 	if ! [ -e /opt/rh/gcc-toolset-11/root/usr/lib/gcc/x86_64-redhat-linux/11/plugin/gcc-annobin.so ]; then
-		echo "### symlinking gcc-annobin.so to annobin.so"
+		echo "### Symlinking gcc-annobin.so to annobin.so"
 		(
 			cd /opt/rh/gcc-toolset-11/root/usr/lib/gcc/x86_64-redhat-linux/11/plugin/ && \
 			ln -s annobin.so gcc-annobin.so
 		)
 	else
-		echo "### symlink gcc-annobin.so already exists"
+		echo "### Symlink gcc-annobin.so already exists"
 	fi
 
 	# ensure gcc-toolset-11 is enabled when building
 	if ! grep /opt/rh/gcc-toolset-11/enable /etc/bashrc; then
-		echo "### patching /etc/bashrc to enable gcc-toolset-11"
+		echo "### Patching /etc/bashrc to enable gcc-toolset-11"
 		echo "source /opt/rh/gcc-toolset-11/enable" >> /etc/bashrc
 	else
 		echo "### /etc/bashrc already patched to enable gcc-toolset-11"
