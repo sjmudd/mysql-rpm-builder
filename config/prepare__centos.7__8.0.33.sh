@@ -19,7 +19,7 @@ prepare() {
 
 	yum install -y centos-release-scl
 
-	echo "### installing required rpms"
+	echo "### Installing required rpms"
 	yum install -y \
 		bind-utils \
 		bison \
@@ -61,7 +61,7 @@ prepare() {
 #
 	# ensure devtoolset-11 is enabled when building
 	if ! grep /opt/rh/devtoolset-11/enable /etc/bashrc; then
-		echo "### patching /etc/bashrc to enable devtoolset-11"
+		echo "### Patching /etc/bashrc to enable devtoolset-11"
 		echo "source /opt/rh/devtoolset-11/enable" >> /etc/bashrc
 	else
 		echo "### /etc/bashrc already patched to enable devtoolset-11"
