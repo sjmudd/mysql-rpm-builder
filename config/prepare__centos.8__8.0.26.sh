@@ -7,12 +7,20 @@ prepare() {
 	yum update -y
 	yum install -y 'dnf-command(config-manager)'
 	yum config-manager --set-enabled powertools
-	echo "### installing required rpms"
+
+	extras="
+		cyrus-sasl-gssapi
+		cyrus-sasl-scram
+		cyrus-sasl-ldap
+	"
+
+	echo "### Installing required rpms"
 	yum install -y \
 		bind-utils \
 		bison \
 		cmake \
 		cyrus-sasl-devel \
+		$extras \
 		gcc-toolset-10 \
 		git \
 		libaio-devel \
@@ -30,18 +38,18 @@ prepare() {
 		wget
 	# patch gcc-toolset to avoid build problems
 	if ! [ -e /opt/rh/gcc-toolset-10/root/usr/lib/gcc/x86_64-redhat-linux/10/plugin/gcc-annobin.so ]; then
-		echo "### symlinking gcc-annobin.so to annobin.so"
+		echo "### Symlinking gcc-annobin.so to annobin.so"
 		(
 			cd /opt/rh/gcc-toolset-10/root/usr/lib/gcc/x86_64-redhat-linux/10/plugin/ && \
 			ln -s annobin.so gcc-annobin.so
 		)
 	else
-		echo "### symlink gcc-annobin.so already exists"
+		echo "### Symlink gcc-annobin.so already exists"
 	fi
 
 	# ensure gcc-toolset-10 is enabled when building
 	if ! grep /opt/rh/gcc-toolset-10/enable /etc/bashrc; then
-		echo "### patching /etc/bashrc to enable gcc-toolset-10"
+		echo "### Patching /etc/bashrc to enable gcc-toolset-10"
 		echo "source /opt/rh/gcc-toolset-10/enable" >> /etc/bashrc
 	else
 		echo "### /etc/bashrc already patched to enable gcc-toolset-10"
