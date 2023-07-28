@@ -4,8 +4,10 @@
 # - quay.io/centos/centos:stream8
 #
 # other images:
+# - quay.io/centos/centos:stream9
 # - almalinux:8.7
 # - oraclelinux:8.7
+# - oraclelinux:9
 # - rockylinux:8.7
 #
 # To build and install in one go do the following:

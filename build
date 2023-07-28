@@ -130,7 +130,7 @@ install_custom_patches () {
 
 # return the src rpm location based on the build version / OS we are building
 get_srpm_location () {
-	location=$(grep ^$mysql_build_version /data/build.conf | grep -w build | grep -w ${ID}.${BUILD_VERSION} | awk '{ print $5 }')
+	location=$(grep ^$mysql_build_version $config | grep -w ${ID}.${BUILD_VERSION} | awk '{ print $5 }')
 
 	echo $location
 }
@@ -175,7 +175,7 @@ build_rpm_stage () {
 build_rpm_stage_logged () {
 	log "### Starting build stage at $(date)"
 
-	build_script=$(grep -w build $config | grep -w ${ID}.${BUILD_VERSION} | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
+	build_script=$(grep -w ${ID}.${BUILD_VERSION} $config | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
 
 	if [ -z "$build_script" ]; then
 		exit_error "No rpm build script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
@@ -246,7 +246,7 @@ prepare_stage () {
 }
 
 prepare_stage_logged () {
-	prepare_script=$(grep -w prepare $config | grep -w ${ID}.${BUILD_VERSION} | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
+	prepare_script=$(grep -w ${ID}.${BUILD_VERSION} $config | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $3 }')
 	if [ -z "$prepare_script" ]; then
 		exit_error "No OS prepare script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
 	fi
