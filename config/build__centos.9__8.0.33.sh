@@ -1,7 +1,6 @@
 #!/bin/sh
 
 build () {
-    SRPMS="https://yum.oracle.com/repo/OracleLinux/OL9/MySQL80/community/x86_64/getPackageSource/mysql-community-8.0.33-1.el9.src.rpm"
-    install_srpms "$SRPMS"
+    install_srpms $(get_srpm_location)
     rpmbuild_rpms
 }

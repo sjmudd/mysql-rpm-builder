@@ -1,7 +1,6 @@
 #!/bin/sh
 
 build () {
-	SRPMS=$(get_srpm_location)
-	install_srpms "$SRPMS"
+	install_srpms $(get_srpm_location)
 	rpmbuild_rpms
 }
