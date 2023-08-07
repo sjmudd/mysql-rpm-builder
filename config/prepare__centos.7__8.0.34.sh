@@ -18,6 +18,9 @@ prepare() {
 #	yum config-manager --set-enabled $extra_repo
 
 	yum install -y centos-release-scl
+	yum install -y epel-release
+	yum-config-manager --enable centos-release-scl
+	yum-config-manager --enable epel-release
 
 	echo "### Installing required rpms"
 	yum install -y \
