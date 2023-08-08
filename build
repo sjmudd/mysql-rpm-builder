@@ -216,13 +216,13 @@ build_rpm_stage_logged () {
 }
 
 # run the root user stage: prepare the OS for the build
-prepare_stage () {
-	local logfile=/data/log/prepare__${label}.log
+ossetup_stage () {
+	local logfile=/data/log/ossetup__${label}.log
 
 	log "Sending prepare logging to $logfile"
 	set -o pipefail
-	prepare_stage_logged 2>&1 | tee -a $logfile
-	log "prepare_stage_logged took $SECONDS seconds to run" | tee -a $logfile
+	ossetup_stage_logged 2>&1 | tee -a $logfile
+	log "ossetup_stage_logged took $SECONDS seconds to run" | tee -a $logfile
 
 	# Complete the rpm build part if requested.
 	# - if not indicate how to proceed
@@ -245,14 +245,14 @@ prepare_stage () {
 	su - $BUILD_USER $0 $mysql_build_version
 }
 
-prepare_stage_logged () {
-	prepare_script=$(grep -w ${ID}.${BUILD_VERSION} $config | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $3 }')
-	if [ -z "$prepare_script" ]; then
+ossetup_stage_logged () {
+	ossetup_script=$(grep -w ${ID}.${BUILD_VERSION} $config | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $3 }')
+	if [ -z "$ossetup_script" ]; then
 		exit_error "No OS prepare script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
 	fi
 
-	prepare_script=/data/config/$prepare_script
-	if [ ! -e "$prepare_script" ]; then
+	ossetup_script=/data/config/$ossetup_script
+	if [ ! -e "$ossetup_script" ]; then
 		log "Missing prepare script $location to prepare operating system $NAME ($ID $VERSION_ID) to build MySQL version $mysql_build_version"
 		log "BUILD_VERSION: $BUILD_VERSION"
 		log "NAME: $NAME"
@@ -267,8 +267,8 @@ prepare_stage_logged () {
 	log "#    for building rpms with label $mysql_build_version"
 	log "########################################################"
 	echo
-	log "Sourcing prepare script: $prepare_script"
-	. $prepare_script
+	log "Sourcing prepare script: $ossetup_script"
+	. $ossetup_script
 
 	prepare
 	setup_build_user
@@ -310,7 +310,7 @@ get_os_and_version
 label=${mysql_build_version}__${ID}.${VERSION_ID}__$(date +%Y%m%d.%H%M%S)
 
 case "$USER" in
-root)		prepare_stage;;
+root)		ossetup_stage;;
 $BUILD_USER)	build_rpm_stage;;
 *)		exit_error "unexpected USER $USER, please call the script properly"
 esac

@@ -22,9 +22,12 @@ prepare() {
 		bind-utils \
 		bison \
 		cmake \
-		cyrus-sasl-devel libaio-devel \
+		cyrus-sasl-devel \
 		git \
+		krb5-devel \
+		libaio-devel \
 		libcurl-devel \
+		libfido2-devel \
 		libtirpc-devel \
 		libudev-devel \
 		ncurses-devel \
