@@ -1,0 +1,30 @@
+
+--- mysql.spec.orig	2023-11-02 21:20:49.863472158 +0100
++++ mysql.spec	2023-11-02 21:29:35.143983290 +0100
+@@ -150,7 +150,7 @@
+ Summary:        A very fast and reliable SQL database server
+ Group:          Applications/Databases
+ Version:        8.2.0
+-Release:        1%{?commercial:.1}%{?dist}
++Release:        1%{?commercial:.1}%{?dist}.hypergraph
+ License:        Copyright (c) 2000, 2023, %{mysql_vendor}. Under %{?license_type} license as shown in the Description field.
+ Source0:        https://cdn.mysql.com/Downloads/MySQL-8.2/%{src_dir}.tar.gz
+ URL:            http://www.mysql.com/
+@@ -162,6 +162,7 @@
+ Source10:       https://boostorg.jfrog.io/artifactory/main/release/1.77.0/source/boost_1_77_0.tar.bz2
+ Source90:       filter-provides.sh
+ Source91:       filter-requires.sh
++Patch0:         000.hypergraph_optimizer_enable.diff
+ %if 0%{?rhel} >= 8
+ BuildRequires:  cmake >= 3.6.1
+ BuildRequires:  libtirpc-devel
+@@ -792,6 +793,8 @@
+ %else
+ %setup -q -T -a 0 -a 10 -c -n %{src_dir}
+ %endif # 0%{?compatlib}
++# 000 Enable hypergraph optimizer
++%patch0 -p1
+
+ %build
+ # Fail quickly and obviously if user tries to build as root
+

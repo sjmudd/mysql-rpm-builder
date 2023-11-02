@@ -1,0 +1,21 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5f4cc06f30c..31d63ba40f6 100644
+--- a/mysql-8.2.0/CMakeLists.txt
++++ b/mysql-8.2.0/CMakeLists.txt
+@@ -2165,12 +2165,10 @@ IF(WITH_ICU STREQUAL "bundled")
+   FILE(WRITE "${CMAKE_BINARY_DIR}/${ICUDT_DIR}.lnk" "${ICU_DATA_SOURCE_DIR}")
+ ENDIF()
+ 
+-# The hypergraph optimizer is default on only for debug builds.
+-IF(CMAKE_BUILD_TYPE_UPPER STREQUAL "DEBUG" OR WITH_DEBUG)
+-  SET(WITH_HYPERGRAPH_OPTIMIZER_DEFAULT ON)
+-ELSE()
+-  SET(WITH_HYPERGRAPH_OPTIMIZER_DEFAULT OFF)
+-ENDIF()
++#
++# Force the HYPERGRAPH OPTIMIZER to be compiled into the code.
++#
++SET(WITH_HYPERGRAPH_OPTIMIZER_DEFAULT ON)
+ OPTION(WITH_HYPERGRAPH_OPTIMIZER
+   "Allow use of the hypergraph join optimizer"
+   ${WITH_HYPERGRAPH_OPTIMIZER_DEFAULT}
