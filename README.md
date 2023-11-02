@@ -140,15 +140,73 @@ following:
   `/data/config/<version>/SPECS` directories as these will automatically
   be added after installing the `src.rpm`.
 
+In practice you may want or need to patch the mysql.spec file so you'd have a file
+like /data/config/<version>/SPECS/mysql.spec.patch with the appropriate
+patch against files in the directory so the beginning of the diff might look like
+
+```
+--- mysql.spec.orig     2023-11-02 21:20:49.863472158 +0100
++++ mysql.spec  2023-11-02 21:29:35.143983290 +0100
+... patch goes here ...
+```
+
+With patches against the source tree the patch would be located here:
+
+`config/<version>/SOURCES/patch_name.diff`
+
+and the patch contents will look something like:
+
+```
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5f4cc06f30c..31d63ba40f6 100644
+--- a/mysql-8.2.0/CMakeLists.txt
++++ b/mysql-8.2.0/CMakeLists.txt
+... patch goes here ...
+
+```
+
+with the change in the mysql.spec file being something like:
+
+```
+--- mysql.spec.orig     2023-11-02 21:20:49.863472158 +0100
++++ mysql.spec  2023-11-02 21:29:35.143983290 +0100
+@@ -150,7 +150,7 @@
+ Summary:        A very fast and reliable SQL database server
+ Group:          Applications/Databases
+ Version:        8.2.0
+-Release:        1%{?commercial:.1}%{?dist}
++Release:        1%{?commercial:.1}%{?dist}.hypergraph
+ License:        Copyright (c) 2000, 2023, %{mysql_vendor}. Under %{?license_type} license as shown in the Description field.
+ Source0:        https://cdn.mysql.com/Downloads/MySQL-8.2/%{src_dir}.tar.gz
+ URL:            http://www.mysql.com/
+@@ -162,6 +162,7 @@
+ Source10:       https://boostorg.jfrog.io/artifactory/main/release/1.77.0/source/boost_1_77_0.tar.bz2
+ Source90:       filter-provides.sh
+ Source91:       filter-requires.sh
++Patch0:         000.hypergraph_optimizer_enable.diff
+ %if 0%{?rhel} >= 8
+ BuildRequires:  cmake >= 3.6.1
+ BuildRequires:  libtirpc-devel
+@@ -792,6 +793,8 @@
+ %else
+ %setup -q -T -a 0 -a 10 -c -n %{src_dir}
+ %endif # 0%{?compatlib}
++# 000 Enable hypergraph optimizer
++%patch0 -p1
+
+ %build
+ # Fail quickly and obviously if user tries to build as root
+```
+
 ## Warning on differences between different equivalent OS versions.
 
-I tend to use [CentOS](centos.org) as the Linux flavour of interest. This is the
-unlicensed, fully GPL version of [RedHat Enterprise Linux](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux).
-There are other similar flavours which were released after the unexpected termination of
-CentOS 8 and its replacement with CentOS 8 Stream.  The intention of all
-these repos is to be equivalent, but in fact there are some differences
-and what may work on one OS may not work on the others at least without
-some minimal changes.
+I tend to use [CentOS](centos.org) as the Linux flavour of
+interest. This is the unlicensed, fully GPL version of [RedHat Enterprise Linux](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux).
+There are other similar flavours which were released after the unexpected
+termination of CentOS 8 and its replacement with CentOS 8 Stream.
+The intention of all these repos is to be equivalent, but in fact there
+are some differences and what may work on one OS may not work on the
+others at least without some minimal changes.
 
 I have seen some differences between OL8 and CentOS 8 Stream with the
 names of additional repos used and it looks like CentOS 9 may have
