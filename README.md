@@ -69,9 +69,48 @@ $ docker run --rm -it \
         /data/build -a 8.0.33
 ```
 
+Other examples might be:
+```
+$ docker run --rm -it --network=host --hostname=mysql-builder -v $PWD:/data oraclelinux:9 /data/build -a 8.0.36
+```
+
 However, if the process fails you won't have access to the state of the build
 at the moment it fails. If you need to verify what breaks go through the
 3 below steps individually.
+
+Build failures are typically due to failure to ensure the required
+repos are configured, allowing all the rpms to be found and installed.
+This is troublesome as the rpm spec file does not say WHERE the rpms
+come from. In the old days you'd expect the required rpms to be in the
+base OS repos, but for MySQL builds we are using newer compilers than
+the default system `gcc` and so the toolset and required rpms will be
+in one of several external repos that need configuring.  It turns out
+that repo naming and setup is different for each flavour of the OS. So
+if you see a build failure such as:
+
+```
+...
+Installed:
+  dbus-libs-1:1.12.20-8.el9.x86_64
+  dnf-plugins-core-4.3.0-13.el9.noarch
+  python3-dateutil-1:2.8.1-7.el9.noarch
+  python3-dbus-1.2.18-2.el9.x86_64
+  python3-dnf-plugins-core-4.3.0-13.el9.noarch
+  python3-six-1.15.0-9.el9.noarch
+  python3-systemd-234-18.el9.x86_64
+  systemd-libs-252-32.el9.x86_64
+
+Complete!
+### Enabling extra repo:
+### installing required rpms
+Last metadata expiration check: 0:00:24 ago on Wed Apr  3 05:32:32 2024.
+No match for argument: libfido2-devel
+No match for argument: libtirpc-devel
+Error: Unable to find a match: libfido2-devel libtirpc-devel
+```
+
+this is most likely the cause and a bit of investigation is required to
+find the rpms and setup the required repo accordingly.
 
 ### Building in individual steps
 
@@ -122,7 +161,10 @@ configured.
 
 The build process will save logs in the `/data/log` directory, based on
 the mysql version configuration specified and the OS found. Logging is
-in UTC.
+in UTC. The `/data/log` directory is actually kept as it's located within
+the `$PWD` you build from. This allows for inspection of the build logs even
+if you run the build completely from docker with `--rm` to remove the
+created run image after completion of the build.
 
 If successful the list of installed rpms required to perform the build
 is also recorded as this may change over time or if the build fails it is
@@ -240,12 +282,3 @@ instructions for triggering repeatable rpm builds from the git tree may
 be applicable. [Here](https://github.com/sjmudd/bacula-rpm-builder/) is
 an example of that.   As the git trees of many packages are the ultimate
 source using those is clearly better.
-
-## TODO
-
-I should probably provide a mechanism for patching the `mysql.spec`
-file rather than replacing it completely as usually patches for a
-some minor change and this is more explicit than modifying the whole
-`mysql.spec` file.  This would also make it much easier to apply the same
-patch unmodified to different versions.  This change has not been done
-yet but may be added later.
