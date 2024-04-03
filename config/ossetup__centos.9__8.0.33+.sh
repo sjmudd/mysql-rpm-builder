@@ -1,4 +1,8 @@
-#!/bin/sh
+############################################################################
+#                                                                          #
+# OS Setup functions for OS9                                               #
+#                                                                          #
+############################################################################
 
 set -e
 
@@ -8,11 +12,16 @@ prepare() {
 	yum update -y
 	yum install -y 'dnf-command(config-manager)'
 
-	# OEL9 differences vs CentOS 9 stream ???
-	if  rpm -qa | grep -q centos-stream-release-9; then
+	# OEL9 differences vs CentOS 9 stream
+	if rpm -q centos-stream-release 2>&1 >/dev/null; then
+		echo "- found CentOS 9 stream"
 		extra_repo=crb
 	elif rpm -q oraclelinux-release 2>&1 >/dev/null; then
+		echo "- found Oracle Linux 9"
 		extra_repo=ol9_codeready_builder
+	else
+		echo "- OS not recognised, giving up"
+		exit 1
 	fi
 	echo "### Enabling extra repo: $extra_repo"
 	yum config-manager --set-enabled $extra_repo

@@ -192,8 +192,9 @@ build_rpm_stage_logged () {
 		exit 1
 	fi
 
-	log "Sourcing build script: $build_script"
+	log "Sourcing: $build_script"
 	. $build_script
+	log "Sourcing: $build_script complete"
 	build
 
 	rc=$?
@@ -267,8 +268,9 @@ ossetup_stage_logged () {
 	log "#    for building rpms with label $mysql_build_version"
 	log "########################################################"
 	echo
-	log "Sourcing prepare script: $ossetup_script"
+	log "Sourcing: $ossetup_script"
 	. $ossetup_script
+	log "Sourcing: $ossetup_script complete"
 
 	prepare
 	setup_build_user
