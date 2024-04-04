@@ -55,6 +55,20 @@ prepare() {
 		wget \
 		zlib-devel
 
+	# FIXME: Handle aarch64 architecture.
+	# See: https://bugs.mysql.com/bug.php?id=108049. Without this symlink the
+	# build process will fail to find something the code needs to complete
+	# the build.
+	PLUGINDIR=/opt/rh/gcc-toolset-12/root/usr/lib/gcc/x86_64-redhat-linux/12/plugin
+	pushd $PLUGINDIR
+
+	echo "Handling CentOS 9 workaround symlinks"
+	for p in annobin.so annobin.so.0.0.0 gcc-annobin.so gcc-annobin.so.0.0.0; do
+		echo "Symlinking missing $p..."
+		test -e $p || ln -s gts-annobin.so.0.0.0 $p
+	done
+	popd
+
 	echo "########################################################"
 	echo "#           os preparation complete                    #"
 	echo "########################################################"
