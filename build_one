@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# build a MySQL under docker on <OS>, MySQL version <version>
+# build a MySQL under docker on <OS>, MySQL label <label>
 #
 myname=$(basename $0)
 myhostname=$(hostname -s)
@@ -29,7 +29,7 @@ get_oses () {
 	sed -e 's/[[:space:]][[:space:]]*/ /g'
 }
 
-get_versions () {
+get_labels () {
 	local os=$1
 
 	grep -v "^#" build.conf |\
@@ -62,18 +62,18 @@ done
 shift $(($OPTIND - 1))
 
 osname=$1
-version=$2
+label=$2
 [ -n "$osname" ] || err 1 "No osname given. Try one of: $(get_oses)"
-[ -n "$version" ] || err 2 "No MySQL version given. Try one of: $(get_versions $osname)"
+[ -n "$label" ] || err 2 "No MySQL label given. Try one of: $(get_labels $osname)"
 image=$(get_image $osname)
 [ -n "$image" ] || err 3 "No image found for os $osname"
 
-logfile=log/$myname-$osname-$version.log
+logfile=log/$myname-$osname-$label.log
 
-log $logfile "${noop_text}Attempting to build: $version on $osname"
+log $logfile "${noop_text}Attempting to build: $label on $osname"
 
 # catch start time
-name=mysql-rpm-builder-$version # version is shown via image
+name=mysql-rpm-builder-$label # OS is shown via image
 start_seconds=$SECONDS
 (
 	cd $(dirname $0) &&
@@ -84,7 +84,7 @@ start_seconds=$SECONDS
 		--hostname=builder \
 		-v $PWD:/data \
 		$image \
-		/data/build -a $version
+		/data/build -a $label
 )
 rc=$?
 
@@ -97,6 +97,6 @@ else
 	status=FAILED
 fi
 elapsed=$(($end_seconds - $start_seconds))
-echo "$(date +'%Y-%m-%dT%H:%M:%S') $myhostname $myname[$$] osname=$osname, version=$version, image=$image, status=$status, rc=$rc, elapsed=$elapsed" >> log/$myname.build_status
+echo "$(date +'%Y-%m-%dT%H:%M:%S') $myhostname $myname[$$] osname=$osname, label=$label, image=$image, status=$status, rc=$rc, elapsed=$elapsed" >> log/$myname.build_status
 
-log $logfile "Exit status: $rc for ${noop_text}build: $version on $osname"
+log $logfile "Exit status: $rc for ${noop_text}build: $label on $osname"

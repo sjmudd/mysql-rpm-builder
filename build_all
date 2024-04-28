@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# build all configured rpms
+# build all configured rpms in build.conf
 #
 myname=$(basename $0)
 myhostname=$(echo $HOSTNAME | cut -d. -f1)
@@ -14,10 +14,9 @@ while getopts n flag; do
 	esac
 done
 
-
 sed -e 's/#.*//' build.conf |\
 sed -e '/^$/d' |\
-while read version os ossetup builder srpm; do
-	echo "$(date) $myhostname $myname[$$]: calling ./build_one $noop $os $version"
-	$(dirname $0)/build_one $noop $os $version
+while read label os ossetup builder srpm; do
+	echo "$(date) $myhostname $myname[$$]: calling ./build_one $noop $os $label"
+	$(dirname $0)/build_one $noop $os $label
 done
