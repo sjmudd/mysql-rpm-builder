@@ -1,20 +1,23 @@
 #!/bin/sh
 
 # default image:
-# - quay.io/centos/centos:stream8
+# - quay.io/centos/centos:stream9
 #
 # other images:
-# - quay.io/centos/centos:stream9
-# - almalinux:8.7
-# - oraclelinux:8.7
+# - quay.io/centos/centos:7
+# - quay.io/centos/centos:stream8
+# - almalinux:8
+# - almalinux:9
+# - oraclelinux:8
 # - oraclelinux:9
-# - rockylinux:8.7
+# - rockylinux:8
+# - rockylinux:9
 #
 # To build and install in one go do the following:
-# docker run --rm -it --network=host --hostname=mysql-builder -v $PWD:/data rockylinux:8.7 /data/build -a 8.0.33
+# docker run --rm -it --network=host --hostname=builder -v $PWD:/data rockylinux:8 /data/build -a 8.0.33
 #
 myname=$(basename $0)
-default_image=quay.io/centos/centos:stream8
+default_image=quay.io/centos/centos:stream9
 
 usage () {
 	local rc=${1:-0}

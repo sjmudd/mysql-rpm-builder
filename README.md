@@ -144,12 +144,14 @@ $ ./start-docker-container.sh [<image_to_use>]
 ```
 
 Current images are:
-- AlmaLinux 8: almalinux:8.7
+- AlmaLinux 8: almalinux:8
+- AlmaLinux 9: almalinux:9
 - CentOS 7: quay.io/centos:7
-- CentOS 8 stream: quay.io/centos/centos:stream (default)
+- CentOS 8 stream: quay.io/centos/centos:stream (default image)
 - CentOS 9 stream: quay.io/centos/centos:stream9
-- OEL 8: oraclelinux:8.7
-- Rocky Linux 8: rocky:8.7
+- OEL 8: oraclelinux:8
+- Rocky Linux 8: rocky:8
+- Rocky Linux 9: rocky:9
 
 #### Within docker container, as root run:
 
@@ -283,6 +285,14 @@ times. On a home system I have (Beelink SER 4700u) this takes about 2h
 process reads and writes a lot to the filesystem so storage latency can
 be signifcant.
 
+NOTE:
+
+RPM builds by Oracle run the build process twice, once for the normal
+builds and once to create debug builds which provide full symbols etc.
+This means that build times are longer than you might otherwise expect
+as the debug builds contain a lot of extra debug / symbol information
+all of which is built into the debug rpms.
+
 ## Related thoughts.
 
 None of what is done here is specific to MySQL so these scripts could
@@ -296,3 +306,12 @@ instructions for triggering repeatable rpm builds from the git tree may
 be applicable. [Here](https://github.com/sjmudd/bacula-rpm-builder/) is
 an example of that.   As the git trees of many packages are the ultimate
 source using those is clearly better.
+
+As of April 2024 The OS7 / OS8 versions are close to EOL so moving to
+OS9 will be needed.  I guess none of the OS "vendors" will provide
+sort for newer versions of MySQL on these versions. Perhaps the
+rebuilds will allow that to be possible.
+
+MySQL 8.4 is due out very shortly. I'll endevour to adjust this rebuild
+process to work with the new versions. Most likely that since the 8.3.0
+builds work 8.4.X should rebuild in a similar way.
