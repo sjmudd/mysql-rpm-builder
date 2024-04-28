@@ -41,6 +41,9 @@ on github directly.
 
 ## Directory Layout
 
+- `build`             intended to build a single rpm, used from within docker
+- `build_one`         intended to build a single rpm, used from outside docker
+- `build_all`         intended to build all rpms, used from outside docker. Takes no parameters.
 - `build.conf`        configuration file for `build` indicating which scripts
                       should be used for preparing the OS or building MySQL.
 - `built/`            directory containing built rpms.
@@ -59,11 +62,6 @@ on github directly.
 
 ### Simple way
 
-There are 3 main scripts:
-- `build`: intended to build a single rpm, used from within docker
-- `build_one`: intended to build a single rpm, used from outside docker
-- `build_all`: intended to build all rpms, used from outside docker. Takes no parameters.
-
 Typical usage would be:
 
 - `build_one <os> <verson>`
@@ -71,14 +69,14 @@ Typical usage would be:
 
 If you don't provide either parameter you'll be prompted for valid values.
 
-### Build in one go
+### What's under the hood?
 
-The **whole process** can now be done with a single command from the docker server:
+`build_one` basically calls docker with the required parameters as shown:
 
 ```
 $ docker run --rm -it \
         --network=host \
-        --hostname=rpm-builder \
+        --hostname=buildhost \
         -v $PWD:/data quay.io/centos/centos:stream8 \
         /data/build -a 8.0.33
 ```

@@ -83,7 +83,7 @@ start_seconds=$SECONDS
 		--name=$name \
 		--rm \
 		--network=host \
-		--hostname=builder \
+		--hostname=buildhost \
 		-v $PWD:/data \
 		$image \
 		/data/build -a $label
