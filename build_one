@@ -73,7 +73,9 @@ logfile=log/$myname-$osname-$label.log
 log $logfile "${noop_text}Attempting to build: $label on $osname"
 
 # catch start time
-name=mysql-rpm-builder-$label # OS is shown via image
+# - OS is shown via image
+# - add a 5-digit random suffix
+name=mysql-rpm-builder-$label-$(tr -dc A-Za-z </dev/urandom | head -c 5)
 start_seconds=$SECONDS
 (
 	cd $(dirname $0) &&

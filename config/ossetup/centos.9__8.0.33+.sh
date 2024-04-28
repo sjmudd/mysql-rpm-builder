@@ -19,6 +19,12 @@ prepare() {
 	elif rpm -q oraclelinux-release 2>&1 >/dev/null; then
 		echo "- found Oracle Linux 9"
 		extra_repo=ol9_codeready_builder
+	elif rpm -q almalinux-release 2>&1 >/dev/null; then
+		echo "- found Alma Linux 9"
+		extra_repo=crb
+	elif rpm -q rocky-release 2>&1 >/dev/null; then
+		echo "- found Rocky Linux 9"
+		extra_repo=crb
 	else
 		echo "- OS not recognised, giving up"
 		exit 1
