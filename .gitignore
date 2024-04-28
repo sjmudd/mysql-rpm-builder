@@ -1,5 +1,6 @@
 .bash_history
 .lesshst
-log/
-built/
+.nfs*
 SRPMS/
+built/
+log/
