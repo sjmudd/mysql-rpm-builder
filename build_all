@@ -1,0 +1,23 @@
+#!/bin/sh
+#
+# build all configured rpms
+#
+myname=$(basename $0)
+myhostname=$(echo $HOSTNAME | cut -d. -f1)
+
+noop=
+while getopts n flag; do
+	case $flag in
+	n)	noop=-$flag;;
+	*)	echo "ERROR: invalid flag $flag, exiting"
+		exit 1
+	esac
+done
+
+
+sed -e 's/#.*//' build.conf |\
+sed -e '/^$/d' |\
+while read version os ossetup builder srpm; do
+	echo "$(date) $myhostname $myname[$$]: calling ./build_one $noop $os $version"
+	$(dirname $0)/build_one $noop $os $version
+done

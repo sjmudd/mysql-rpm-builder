@@ -31,6 +31,7 @@ usage () {
 	#A typical command will be something like '/data/build -a 8.3.0'
 	#
 	#Possible images:
+	#- quay.io/centos/centos:7
 	#- quay.io/centos/centos:stream8 (default)
 	#- quay.io/centos/centos:stream9
 	#- almalinux:8.7

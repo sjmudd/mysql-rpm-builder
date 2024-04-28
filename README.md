@@ -57,6 +57,20 @@ on github directly.
 
 ## Build Process
 
+### Simple way
+
+There are 3 main scripts:
+- `build`: intended to build a single rpm, used from within docker
+- `build_one`: intended to build a single rpm, used from outside docker
+- `build_all`: intended to build all rpms, used from outside docker. Takes no parameters.
+
+Typical usage would be:
+
+- `build_one <os> <verson>`
+- e.g. `build_one centos.8 8.0.36`
+
+If you don't provide either parameter you'll be prompted for valid values.
+
 ### Build in one go
 
 The **whole process** can now be done with a single command from the docker server:
@@ -133,7 +147,9 @@ $ ./start-docker-container.sh [<image_to_use>]
 
 Current images are:
 - AlmaLinux 8: almalinux:8.7
+- CentOS 7: quay.io/centos:7
 - CentOS 8 stream: quay.io/centos/centos:stream (default)
+- CentOS 9 stream: quay.io/centos/centos:stream9
 - OEL 8: oraclelinux:8.7
 - Rocky Linux 8: rocky:8.7
 

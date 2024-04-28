@@ -173,6 +173,9 @@ build_rpm_stage () {
 
 # run the BUILD_USER stage with logging enabled
 build_rpm_stage_logged () {
+	local build_script
+	local final_location
+
 	log "### Starting build stage at $(date)"
 
 	build_script=$(grep -w ${ID}.${BUILD_VERSION} $config | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
@@ -181,7 +184,7 @@ build_rpm_stage_logged () {
 		exit_error "No rpm build script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
 	fi
 
-	build_script=/data/config/$build_script
+	build_script=/data/config/build/$build_script
 	if [ ! -e "$build_script" ]; then
 		log "Missing build script in $build_script to build $mysql_build_version on $ID.${BUILD_VERSION}"
 		log "BUILD_VERSION: $BUILD_VERSION"
@@ -252,9 +255,9 @@ ossetup_stage_logged () {
 		exit_error "No OS prepare script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
 	fi
 
-	ossetup_script=/data/config/$ossetup_script
+	ossetup_script=/data/config/ossetup/$ossetup_script
 	if [ ! -e "$ossetup_script" ]; then
-		log "Missing prepare script $location to prepare operating system $NAME ($ID $VERSION_ID) to build MySQL version $mysql_build_version"
+		log "Missing prepare script '$ossetup_script' prepare operating system $NAME ($ID $VERSION_ID) to build MySQL version $mysql_build_version"
 		log "BUILD_VERSION: $BUILD_VERSION"
 		log "NAME: $NAME"
 		log "ID: $ID"

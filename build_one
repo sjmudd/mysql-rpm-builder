@@ -1,0 +1,102 @@
+#!/bin/bash
+#
+# build a MySQL under docker on <OS>, MySQL version <version>
+#
+myname=$(basename $0)
+myhostname=$(hostname -s)
+export TZ=UTC
+
+err () {
+	local rc=$1
+	shift
+
+	echo "$(date +'%Y-%m-%dT%H:%M:%S') $myhostname $myname[$$]: ERROR: $@"
+	exit $rc
+}
+
+log () {
+	local logfile=$1
+	shift
+
+	echo "$(date +'%Y-%m-%dT%H:%M:%S') $myhostname $myname[$$]: $@" | tee -a $logfile
+}
+
+get_oses () {
+	grep -v "^#" images.conf |\
+	grep -v "^[[:space:]]*$" |\
+	awk '{ print $1 }' | sort |\
+	tr "\n" " " |\
+	sed -e 's/[[:space:]][[:space:]]*/ /g'
+}
+
+get_versions () {
+	local os=$1
+
+	grep -v "^#" build.conf |\
+	grep -v "^[[:space:]]*$" |\
+	awk -v os=$os 'os == $2 { print $1 }' | sort |\
+	tr "\n" " " |\
+	sed -e 's/[[:space:]][[:space:]]*/ /g'
+}
+
+get_image () {
+	local osname=$1
+
+	grep -v "^#" images.conf |\
+	grep -v "^[[:space:]]*$" |\
+	awk -v osname=$osname 'osname == $1 { print $2 }'
+}
+
+noop=
+noop_text=
+while getopts n flag; do
+	case $flag in
+	n)	noop=echo
+		noop_text="NOT "
+		;;
+	*)	echo "ERROR: invalid flag $flag, exiting"
+		exit 1
+		;;
+	esac
+done
+shift $(($OPTIND - 1))
+
+osname=$1
+version=$2
+[ -n "$osname" ] || err 1 "No osname given. Try one of: $(get_oses)"
+[ -n "$version" ] || err 2 "No MySQL version given. Try one of: $(get_versions $osname)"
+image=$(get_image $osname)
+[ -n "$image" ] || err 3 "No image found for os $osname"
+
+logfile=log/$myname-$osname-$version.log
+
+log $logfile "${noop_text}Attempting to build: $version on $osname"
+
+# catch start time
+name=mysql-rpm-builder-$version # version is shown via image
+start_seconds=$SECONDS
+(
+	cd $(dirname $0) &&
+	$noop docker run \
+		--name=$name \
+		--rm \
+		--network=host \
+		--hostname=builder \
+		-v $PWD:/data \
+		$image \
+		/data/build -a $version
+)
+rc=$?
+
+end_seconds=$SECONDS
+if [ -n "$noop" ]; then
+	status=NOOP
+elif [ $rc = 0 ]; then
+	status=OK
+else
+	status=FAILED
+fi
+elapsed=$(($end_seconds - $start_seconds))
+echo "$(date +'%Y-%m-%dT%H:%M:%S') $myhostname $myname[$$] osname=$osname, version=$version, image=$image, status=$status, rc=$rc, elapsed=$elapsed" >> log/$myname.build_status
+
+log $logfile "Exit status: $rc for ${noop_text}build: $version on $osname"
