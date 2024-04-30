@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # build environment for building MySQL from src.rpms
 #
@@ -14,6 +14,8 @@ exit_error () {
 	exit 1
 }
 
+# Set MAJOR_VERSION from VERSION_ID in /etc/os-release if not set.
+# - MAJOR_VERSION will be a single digit major version
 get_os_and_version () {
 	if [ -z "$ID" ]; then
 		. /etc/os-release
@@ -21,7 +23,7 @@ get_os_and_version () {
 		case $ID in
 		almalinux|ol|rocky|centos|rhel)
 			# convert to a single digit if there's a decimal part
-			BUILD_VERSION=$(echo $VERSION_ID | sed -e 's/\..*//')
+			MAJOR_VERSION=$(echo $VERSION_ID | sed -e 's/\..*//')
 			;;
 		*)
 			exit_error "Unrecognised OS: $NAME ($ID $VERSION_ID). Provide a patch to support your linux version if needed."
@@ -128,23 +130,16 @@ install_custom_patches () {
 	fi
 }
 
-# return the src rpm location based on the build version / OS we are building
-get_srpm_location () {
-	location=$(grep ^$mysql_build_version $config | grep -w ${ID}.${BUILD_VERSION} | awk '{ print $5 }')
-
-	echo $location
-}
-
 # build package
 # - FIXME (add signing)
 rpmbuild_rpms () {
-	local label=${ID}.${VERSION_ID}__${mysql_build_version}__$(date +%Y%m%d.%H%M%S)
+	local label=${ID}${VERSION_ID}__${mysql_label}__$(date +%Y%m%d.%H%M%S)
 
 	cd ~/rpmbuild/SPECS
 	# Careful with spacing and quoting!
 	log "### rpmbuild started at $(date)"
 	set -x
-	rpmbuild --define 'el'$BUILD_VERSION' 1' -ba mysql.spec
+	rpmbuild --define 'el'$MAJOR_VERSION' 1' -ba mysql.spec
 	rc=$?
 	set +x
 	log "### rpmbuild terminated at $(date), exit status: $rc"
@@ -171,6 +166,10 @@ build_rpm_stage () {
 	build_rpm_stage_logged 2>&1 | tee -a $logfile
 }
 
+get_build_script () {
+	awk -v os_version="${ID}${MAJOR_VERSION}" -v mysql_label=$mysql_label 'mysql_label == $1 && os_version == $2 { print $4 }' $config
+}
+
 # run the BUILD_USER stage with logging enabled
 build_rpm_stage_logged () {
 	local build_script
@@ -178,20 +177,20 @@ build_rpm_stage_logged () {
 
 	log "### Starting build stage at $(date)"
 
-	build_script=$(grep -w ${ID}.${BUILD_VERSION} $config | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $4 }')
+	build_script=$(get_build_script)
 
 	if [ -z "$build_script" ]; then
-		exit_error "No rpm build script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
+		exit_error "No rpm build script defined for ${ID}${MAJOR_VERSION} and ${mysql_label}. Please configure one."
 	fi
 
 	build_script=/data/config/build/$build_script
 	if [ ! -e "$build_script" ]; then
-		log "Missing build script in $build_script to build $mysql_build_version on $ID.${BUILD_VERSION}"
-		log "BUILD_VERSION: $BUILD_VERSION"
+		log "Missing build script in $build_script to build $mysql_label on $ID${MAJOR_VERSION}"
+		log "MAJOR_VERSION: $MAJOR_VERSION"
 		log "NAME: $NAME"
 		log "ID: $ID"
 		log "VERSION_ID: $VERSION_ID"
-		log "mysql_build_version: $mysql_build_version"
+		log "mysql_label: $mysql_label"
 		exit 1
 	fi
 
@@ -204,7 +203,7 @@ build_rpm_stage_logged () {
 	if [ $rc = 0 ]; then
 		# Move built rpms to built location to ensure that they are kept
 		log "### Build succeeded, moving rpms to /data/built"
-		final_location=/data/built/${ID}.${BUILD_VERSION}__${mysql_build_version}
+		final_location=/data/built/${ID}${MAJOR_VERSION}__${mysql_label}
 		if [ ! -d $final_location ]; then
 			log "- creating directory $final_location"
 			mkdir -p $final_location
@@ -233,11 +232,11 @@ ossetup_stage () {
 	if [ -z "$build_all" ]; then
 		log "Continue the build as $BUILD_USER by doing:"
 		log
-		log "    su - $BUILD_USER /data/build $mysql_build_version"
+		log "    su - $BUILD_USER /data/build $mysql_label"
 		log
 		log "Alternatively rerun the complete process in one go with:"
 		log
-		log "    $0 -a $mysql_build_version"
+		log "    $0 -a $mysql_label"
 		log
 		exit 0
 	fi
@@ -246,29 +245,33 @@ ossetup_stage () {
 	log "#  Switching to user $BUILD_USER to complete the rpm build"
 	log "##############################################################"
 	echo
-	su - $BUILD_USER $0 $mysql_build_version
+	su - $BUILD_USER $0 $mysql_label
+}
+
+get_ossetup_script () {
+	awk -v os_version="${ID}${MAJOR_VERSION}" -v mysql_label=$mysql_label 'mysql_label == $1 && os_version == $2 { print $3 }' $config
 }
 
 ossetup_stage_logged () {
-	ossetup_script=$(grep -w ${ID}.${BUILD_VERSION} $config | grep "^${mysql_build_version}[[:space:]]" | awk '{ print $3 }')
+	ossetup_script=$(get_ossetup_script)
 	if [ -z "$ossetup_script" ]; then
-		exit_error "No OS prepare script defined for ${ID}.${BUILD_VERSION} and ${mysql_build_version}. Please configure one."
+		exit_error "No OS prepare script defined for ${ID}${MAJOR_VERSION} and ${mysql_label}. Please configure one."
 	fi
 
 	ossetup_script=/data/config/ossetup/$ossetup_script
 	if [ ! -e "$ossetup_script" ]; then
-		log "Missing prepare script '$ossetup_script' prepare operating system $NAME ($ID $VERSION_ID) to build MySQL version $mysql_build_version"
-		log "BUILD_VERSION: $BUILD_VERSION"
+		log "Missing prepare script '$ossetup_script' prepare operating system $NAME ($ID $VERSION_ID) to build MySQL version $mysql_label"
+		log "MAJOR_VERSION: $MAJOR_VERSION"
 		log "NAME: $NAME"
 		log "ID: $ID"
 		log "VERSION_ID: $VERSION_ID"
-		log "mysql_build_version: $mysql_build_version"
+		log "mysql_label: $mysql_label"
 		exit 1
 	fi
 
 	log "########################################################"
 	log "#    Preparing OS: $NAME ($ID $VERSION_ID)"
-	log "#    for building rpms with label $mysql_build_version"
+	log "#    for building rpms with label $mysql_label"
 	log "########################################################"
 	echo
 	log "Sourcing: $ossetup_script"
@@ -281,7 +284,7 @@ ossetup_stage_logged () {
 	log
 	log "########################################################"
 	log "#    Completed OS: $NAME ($ID $VERSION_ID) preparation"
-	log "#    for building rpms with label $mysql_build_version"
+	log "#    for building rpms with label $mysql_label"
 	log "########################################################"
 	echo
 }
@@ -305,14 +308,18 @@ while getopts an flag; do
 done
 shift $(($OPTIND - 1))
 
-mysql_build_version=$1
-if [ -z "$mysql_build_version" ]; then
-	exit_error "Please provide mysql_build_version name"
+mysql_label=$1
+if [ -z "$mysql_label" ]; then
+	exit_error "Please provide mysql_label name for building"
 fi
 
+log "Getting OS version info"
 get_os_and_version
+
+log "NAME: $NAME, ID: $ID, MAJOR_VERSION: $MAJOR_VERSION, VERSION_ID: $VERSION_ID"
+
 # Used for logging
-label=${mysql_build_version}__${ID}.${VERSION_ID}__$(date +%Y%m%d.%H%M%S)
+label=${mysql_label}__${ID}${VERSION_ID}__$(date +%Y%m%d.%H%M%S)
 
 case "$USER" in
 root)		ossetup_stage;;
