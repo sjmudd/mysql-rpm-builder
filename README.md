@@ -65,7 +65,7 @@ on github directly.
 Typical usage would be:
 
 - `build_one <os> <verson>`
-- e.g. `build_one centos.8 8.0.36`
+- e.g. `build_one centos8 8.0.36`
 
 If you don't provide either parameter you'll be prompted for valid values.
 
@@ -185,6 +185,20 @@ created run image after completion of the build.
 If successful the list of installed rpms required to perform the build
 is also recorded as this may change over time or if the build fails it is
 useful to share with others in case the installed rpms are not correct.
+
+## A note on OS labels
+
+The labels are NOT random.  They come from `/etc/os-release`:
+
+and the 2 values:
+```
+ID="rocky"
+VERSION_ID="9.3"
+```
+
+With the first major version number being used.
+
+e.g. this resolves to `rocky9`.
 
 ## Patching
 
