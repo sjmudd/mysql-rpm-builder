@@ -56,6 +56,7 @@ prepare() {
 		gcc-toolset-12-annobin-annocheck \
 		gcc-toolset-12-annobin-plugin-gcc \
 		gcc-toolset-12-binutils  \
+		gcc-toolset-12-dwz \
 		gcc-toolset-12-gcc \
 		gcc-toolset-12-gcc-c++ \
 		wget \
