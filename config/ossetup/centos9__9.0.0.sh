@@ -71,15 +71,21 @@ prepare() {
 	# See: https://bugs.mysql.com/bug.php?id=108049. Without this symlink the
 	# build process will fail to find something the code needs to complete
 	# the build.
-	PLUGINDIR=/opt/rh/gcc-toolset-13/root/usr/lib/gcc/x86_64-redhat-linux/13/plugin
-	pushd $PLUGINDIR
+	#
+	# Even better in 9.X we have to support this symlinking in CentOS9 for
+	# both gcctoolset-12 (8.0/8.4 compat builds) and gcctoolset-13 (9.0 builds)
+	gcctoolset_versions="12 13"
+	for version in $gcctoolset_versions; do
+		PLUGINDIR=/opt/rh/gcc-toolset-$version/root/usr/lib/gcc/x86_64-redhat-linux/$version/plugin
+		pushd $PLUGINDIR
 
-	echo "Handling CentOS 9 workaround symlinks"
-	for p in annobin.so annobin.so.0.0.0 gcc-annobin.so gcc-annobin.so.0.0.0; do
-		echo "Symlinking missing $p..."
-		test -e $p || ln -s gts-annobin.so.0.0.0 $p
+		echo "Handling CentOS 9 workaround symlinks for gcc-toolset-$version"
+		for p in annobin.so annobin.so.0.0.0 gcc-annobin.so gcc-annobin.so.0.0.0; do
+			echo "Symlinking missing $p..."
+			test -e $p || ln -s gts-annobin.so.0.0.0 $p
+		done
+		popd
 	done
-	popd
 
 	echo "########################################################"
 	echo "#           os preparation complete                    #"

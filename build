@@ -138,7 +138,7 @@ get_srpm_location () {
 # build package
 # - FIXME (add signing)
 rpmbuild_rpms () {
-	local label=${ID}${VERSION_ID}__${mysql_label}__$(date +%Y%m%d.%H%M%S)
+	local label=${mysql_label}__${ID}${VERSION_ID}__$(date +%Y%m%d.%H%M%S)
 
 	cd ~/rpmbuild/SPECS
 	# Careful with spacing and quoting!
