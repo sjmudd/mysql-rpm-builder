@@ -75,12 +75,16 @@ Given the recent EOL of CentOS 7 / 8 the rebuilds have stopped working.
 This is because they depend on mirrorlist.centos.org to find the repos
 and this location no longer exists.  So rebuilding no longer seems to
 work. I guess I could look to see if there's an alternative location to
-get the latest mirror contents but for now I have commented out these
-build options.
+get the latest copy of the mirror contents but for now I have commented
+out these build options.
 
-I note that Rocky 8 still builds so maybe if you need to rebuild
-MySQL rpms on an old CentOS 8 you can use rocky instead as the build
-environment.  They should behave the same.
+Note that OL8 and Rocky 8 builds still work fine so maybe if you need
+to rebuild MySQL rpms on an old CentOS 8 you can build using OL8/rocky8
+docker images as the build environment instead.  They should behave
+the same.
+
+I have not double checked the "7" versions but would expect this may
+work too.
 
 ### What's under the hood?
 
