@@ -69,6 +69,19 @@ Typical usage would be:
 
 If you don't provide either parameter you'll be prompted for valid values.
 
+### CentOS 7, 8 EOL
+
+Given the recent EOL of CentOS 7 / 8 the rebuilds have stopped working.
+This is because they depend on mirrorlist.centos.org to find the repos
+and this location no longer exists.  So rebuilding no longer seems to
+work. I guess I could look to see if there's an alternative location to
+get the latest mirror contents but for now I have commented out these
+build options.
+
+I note that Rocky 8 still builds so maybe if you need to rebuild
+MySQL rpms on an old CentOS 8 you can use rocky instead as the build
+environment.  They should behave the same.
+
 ### What's under the hood?
 
 `build_one` basically calls docker with the required parameters as shown:
