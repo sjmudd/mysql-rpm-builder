@@ -39,6 +39,13 @@ This is clearly work in progress. If you have feedback to provide you
 can reach me at `sjmudd` at `pobox.com` or file an [issue](https://github.com/sjmudd/mysql-rpm-builder/issues/new)
 on github directly.
 
+## Which versions do I rebuild?
+
+Current code (10/2024) can rebuild the following MySQL versions, all of which are considered GA.
+- 8.0
+- 8.4
+- 9.X (currently 9.1.0)
+
 ## Directory Layout
 
 - `build`             intended to build a single rpm, used from within docker
@@ -309,20 +316,14 @@ I was somewhat suprised at how long it takes to rebuild the rpms.
 I normally do this very rarely.  I have also done this from the git
 source tree provided by Oracle.
 
-The rpm rebuild times seem to be quite a long longer. This is I believe
-because both the normal and debug builds take place increasing the build
-times. On a home system I have (Beelink SER 4700u) this takes about 2h
+The rpm rebuild times seem to be quite a long longer than a single
+normal build. This is because the rpm build process builds the normal
+and debug rpms, the latter containing debug symbol information.
+
+On a home system I have (Beelink SER 4700u) this takes about 2h
 45m using a NAS vs 1h 20m using local nvme storage.  The C/C++ build
 process reads and writes a lot to the filesystem so storage latency can
 be signifcant.
-
-NOTE:
-
-RPM builds by Oracle run the build process twice, once for the normal
-builds and once to create debug builds which provide full symbols etc.
-This means that build times are longer than you might otherwise expect
-as the debug builds contain a lot of extra debug / symbol information
-all of which is built into the debug rpms.
 
 ## Related thoughts.
 
@@ -337,12 +338,3 @@ instructions for triggering repeatable rpm builds from the git tree may
 be applicable. [Here](https://github.com/sjmudd/bacula-rpm-builder/) is
 an example of that.   As the git trees of many packages are the ultimate
 source using those is clearly better.
-
-As of April 2024 The OS7 / OS8 versions are close to EOL so moving to
-OS9 will be needed.  I guess none of the OS "vendors" will provide
-sort for newer versions of MySQL on these versions. Perhaps the
-rebuilds will allow that to be possible.
-
-MySQL 8.4 is due out very shortly. I'll endevour to adjust this rebuild
-process to work with the new versions. Most likely that since the 8.3.0
-builds work 8.4.X should rebuild in a similar way.
