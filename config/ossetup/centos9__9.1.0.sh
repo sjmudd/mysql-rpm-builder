@@ -75,9 +75,10 @@ prepare() {
 	#
 	# Even better in 9.X we have to support this symlinking in CentOS9 for
 	# both gcctoolset-12 (8.0/8.4 compat builds) and gcctoolset-13 (9.0 builds)
+	ARCH=$(uname -m) # to handle x86_64 and aarch64
 	gcctoolset_versions="12 13"
 	for version in $gcctoolset_versions; do
-		PLUGINDIR=/opt/rh/gcc-toolset-$version/root/usr/lib/gcc/x86_64-redhat-linux/$version/plugin
+		PLUGINDIR=/opt/rh/gcc-toolset-$version/root/usr/lib/gcc/$ARCH-redhat-linux/$version/plugin
 		pushd $PLUGINDIR
 
 		echo "Handling CentOS 9 workaround symlinks for gcc-toolset-$version"

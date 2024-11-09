@@ -66,7 +66,8 @@ prepare() {
 	# See: https://bugs.mysql.com/bug.php?id=108049. Without this symlink the
 	# build process will fail to find something the code needs to complete
 	# the build.
-	PLUGINDIR=/opt/rh/gcc-toolset-12/root/usr/lib/gcc/x86_64-redhat-linux/12/plugin
+	ARCH=$(uname -m)
+	PLUGINDIR=/opt/rh/gcc-toolset-12/root/usr/lib/gcc/$ARCH-redhat-linux/12/plugin
 	pushd $PLUGINDIR
 
 	echo "Handling CentOS 9 workaround symlinks"
