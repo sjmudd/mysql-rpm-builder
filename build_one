@@ -70,7 +70,7 @@ image=$(get_image $osname)
 
 logfile=log/$myname-$osname-$label.log
 
-log $logfile "${noop_text}Attempting to build: $label on $osname"
+log $logfile "${noop_text}Attempting to build: MySQL with label $label on OS $osname"
 
 # catch start time
 # - OS is shown via image
@@ -85,6 +85,7 @@ start_seconds=$SECONDS
 		--network=host \
 		--hostname=buildhost \
 		-v $PWD:/data \
+        -w /data \
 		$image \
 		/data/build -a $label
 )

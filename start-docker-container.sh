@@ -17,13 +17,13 @@
 # docker run --rm -it --network=host --hostname=builder -v $PWD:/data rockylinux:8 /data/build -a 8.0.33
 #
 myname=$(basename $0)
-default_image=quay.io/centos/centos:stream9
+default_image=oraclelinux:9
 
 usage () {
 	local rc=${1:-0}
 
 	cat <<-EOF | sed -e 's/^#//'
-	#$usage (C) 2023-2024 Simon J Mudd <sjmudd@pobox.com>
+	#$usage (C) 2023-2025 Simon J Mudd <sjmudd@pobox.com>
 	#Script to start docker and build MySQL rpms with given parameters
 	#
 	#Usage: $myname [-h][-i <image>] command...
@@ -35,11 +35,11 @@ usage () {
 	#
 	#Possible images:
 	#- quay.io/centos/centos:7
-	#- quay.io/centos/centos:stream8 (default)
+	#- quay.io/centos/centos:stream8
 	#- quay.io/centos/centos:stream9
 	#- almalinux:8.7
 	#- oraclelinux:8.7
-	#- oraclelinux:9
+    #- oraclelinux:9 (default)
 	#- rockylinux:8.7
 	EOF
 

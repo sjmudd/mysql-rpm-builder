@@ -45,8 +45,9 @@ setup_build_user () {
 
 	for dir in $directories; do
 		if ! test -d $dir; then
-			log "Creating missing directory: $dir, ownership set to $BUILD_USER:$BUILD_USER"
+			log "- creating missing directory: $dir, ownership set to $BUILD_USER:$BUILD_USER"
 			mkdir -p $dir
+			log "- changing user:group to $BUILD_USER:$BUILD_USER for directory $dir"
 			chown $BUILD_USER:$BUILD_USER $dir
 		fi
 	done
@@ -65,16 +66,16 @@ install_srpms () {
 	log "########################################################"
 	echo
 	for url in $SRPMS; do
-		log "- Want to install $url"
+		log "- want to install $url"
 		rpm=$(basename $url)
 		location=/data/SRPMS/$rpm
 		if [ -e $location ]; then
-			log "- Found cached $location"
+			log "- found cached $location"
 		else
-			log "- Downloading $url to $location"
+			log "- downloading $url to $location"
 			( cd /data/SRPMS && wget $url )
 		fi
-		log "- Installing $url from $location"
+		log "- installing $url from $location"
 		rpm -ivh $location
 	done
 	log "- SRPMS installed:"
@@ -126,7 +127,7 @@ install_custom_patches () {
 		fi
 
 	else
-		log "- No custom patches to apply for $version"
+		log "- no custom patches to apply for $version"
 	fi
 }
 
@@ -167,7 +168,7 @@ build_rpm_stage () {
 	set -o pipefail
 	local logfile=/data/log/build__${label}.log
 
-	log "Sending build logging to $logfile"
+	log "- sending build logging to $logfile"
 	build_rpm_stage_logged 2>&1 | tee -a $logfile
 }
 
@@ -199,9 +200,9 @@ build_rpm_stage_logged () {
 		exit 1
 	fi
 
-	log "Sourcing: $build_script"
+	log "- sourcing: $build_script"
 	. $build_script
-	log "Sourcing: $build_script complete"
+	log "- sourcing: $build_script complete"
 	build
 
 	rc=$?
@@ -227,19 +228,19 @@ build_rpm_stage_logged () {
 ossetup_stage () {
 	local logfile=/data/log/ossetup__${label}.log
 
-	log "Sending prepare logging to $logfile"
+	log "- sending prepare logging to $logfile"
 	set -o pipefail
 	ossetup_stage_logged 2>&1 | tee -a $logfile
-	log "ossetup_stage_logged took $SECONDS seconds to run" | tee -a $logfile
+	log "- ossetup_stage_logged took $SECONDS seconds to run" | tee -a $logfile
 
 	# Complete the rpm build part if requested.
 	# - if not indicate how to proceed
 	if [ -z "$build_all" ]; then
-		log "Continue the build as $BUILD_USER by doing:"
+		log "- continue the build as $BUILD_USER by doing:"
 		log
 		log "    su - $BUILD_USER /data/build $mysql_label"
 		log
-		log "Alternatively rerun the complete process in one go with:"
+		log "- alternatively rerun the complete process in one go with:"
 		log
 		log "    $0 -a $mysql_label"
 		log
