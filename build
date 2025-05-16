@@ -73,7 +73,7 @@ install_srpms () {
 			log "- found cached $location"
 		else
 			log "- downloading $url to $location"
-			( cd /data/SRPMS && wget $url )
+			( cd /data/SRPMS && wget -nv $url )
 		fi
 		log "- installing $url from $location"
 		rpm -ivh $location
