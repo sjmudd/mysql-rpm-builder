@@ -171,9 +171,11 @@ Current images are:
 - AlmaLinux 8: almalinux:8
 - AlmaLinux 9: almalinux:9
 - CentOS 7: quay.io/centos:7
-- CentOS 8 stream: quay.io/centos/centos:stream (default image)
+- CentOS 8 stream: quay.io/centos/centos:stream8
 - CentOS 9 stream: quay.io/centos/centos:stream9
-- OEL 8: oraclelinux:8
+- OL 8: oraclelinux:8
+- OL 9: oraclelinux:9 (default image)
+- OL 10: oraclelinux:10
 - Rocky Linux 8: rocky:8
 - Rocky Linux 9: rocky:9
 

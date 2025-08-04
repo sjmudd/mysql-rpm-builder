@@ -10,6 +10,7 @@
 # - almalinux:9
 # - oraclelinux:8
 # - oraclelinux:9
+# - oraclelinux:10
 # - rockylinux:8
 # - rockylinux:9
 #
@@ -39,7 +40,8 @@ usage () {
 	#- quay.io/centos/centos:stream9
 	#- almalinux:8.7
 	#- oraclelinux:8.7
-    #- oraclelinux:9 (default)
+	#- oraclelinux:9 (default)
+	#- oraclelinux:10
 	#- rockylinux:8.7
 	EOF
 
