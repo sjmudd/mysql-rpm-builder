@@ -41,10 +41,10 @@ on github directly.
 
 ## Which versions do I rebuild?
 
-Current code (10/2024) can rebuild the following MySQL versions, all of which are considered GA.
+Current code (08/2025) can rebuild the following MySQL versions, all of which are considered GA.
 - 8.0
 - 8.4
-- 9.X (currently 9.1.0)
+- 9.X (currently 9.4.0)
 
 ## Directory Layout
 
@@ -72,7 +72,7 @@ Current code (10/2024) can rebuild the following MySQL versions, all of which ar
 Typical usage would be:
 
 - `build_one <os> <verson>`
-- e.g. `build_one centos8 8.0.36`
+- e.g. `build_one centos8 8.0.36` or `./build_one ol9 9.4.0`
 
 If you don't provide either parameter you'll be prompted for valid values.
 
@@ -175,7 +175,7 @@ Current images are:
 - CentOS 9 stream: quay.io/centos/centos:stream9
 - OL 8: oraclelinux:8
 - OL 9: oraclelinux:9 (default image)
-- OL 10: oraclelinux:10
+- OL 10: oraclelinux:10 (WIP)
 - Rocky Linux 8: rocky:8
 - Rocky Linux 9: rocky:9
 
@@ -298,7 +298,7 @@ with the change in the mysql.spec file being something like:
 
 ## Warning on differences between different equivalent OS versions.
 
-I tend to use [CentOS](centos.org) as the Linux flavour of
+I tended to use [CentOS](centos.org) as the Linux flavour of
 interest. This is the unlicensed, fully GPL version of [RedHat Enterprise Linux](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux).
 There are other similar flavours which were released after the unexpected
 termination of CentOS 8 and its replacement with CentOS 8 Stream.
@@ -311,6 +311,10 @@ names of additional repos used and it looks like CentOS 9 may have
 other differences with its _brothers_.  Most of this is easy to fix,
 but none of it is explicit, requiring you to make unexpected changes
 prior to being able to rebuild MySQL rpms.
+
+More recently since CentOS 7 and CentOS 8 have gone EOL I have moved
+to use Oracle Linux 9 and am currently updating code to work with
+the recently released Oracle Linux 10.
 
 ## Build times
 
@@ -326,6 +330,18 @@ On a home system I have (Beelink SER 4700u) this takes about 2h
 45m using a NAS vs 1h 20m using local nvme storage.  The C/C++ build
 process reads and writes a lot to the filesystem so storage latency can
 be signifcant.
+
+## rpm build user
+
+The rpm build user `rpmbuild` created inside the docker container
+is configured to have the first uid/gid that's free. In practice
+on RH systems that's using uid/gid 1000.  There's an assumption
+that the volume imported via docker also uses the same user id.  If
+it doesn't things may most likely fail. I should probably modify
+the docker entry scripts to indicate the correct uid/gid to create
+for this build user for things to work more transparently but have
+not done that yet.
+
 
 ## Related thoughts.
 
