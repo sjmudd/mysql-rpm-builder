@@ -31,28 +31,6 @@ get_os_and_version () {
 	fi
 }
 
-create_rpmbuild_user () {
-	if ! grep $BUILD_USER /etc/passwd; then
-		log "### Adding missing build user: $BUILD_USER"
-		useradd -m $BUILD_USER
-	else
-		log "### Required build user $BUILD_USER already present"
-	fi
-
-	# Create missing directories used for persisting data
-	local directories="/data/SRPMS /data/log /data/built"
-	local dir
-
-	for dir in $directories; do
-		if ! test -d $dir; then
-			log "- creating missing directory: $dir, ownership set to $BUILD_USER:$BUILD_USER"
-			mkdir -p $dir
-			log "- changing user:group to $BUILD_USER:$BUILD_USER for directory $dir"
-			chown $BUILD_USER:$BUILD_USER $dir
-		fi
-	done
-}
-
 # Install the appropriate src.rpm from upstream sources
 # - keep local copy to speed up process so if we do this frequently
 install_srpms () {
