@@ -39,7 +39,7 @@ usage () {
 	#- quay.io/centos/centos:stream8
 	#- quay.io/centos/centos:stream9
 	#- almalinux:8.7
-	#- oraclelinux:8.7
+	#- oraclelinux:8
 	#- oraclelinux:9 (default)
 	#- oraclelinux:10
 	#- rockylinux:8.7

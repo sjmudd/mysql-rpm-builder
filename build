@@ -172,40 +172,17 @@ build_rpm_stage () {
 	build_rpm_stage_logged 2>&1 | tee -a $logfile
 }
 
-get_build_script () {
-	awk -v os_version="${ID}${MAJOR_VERSION}" -v mysql_label=$mysql_label 'mysql_label == $1 && os_version == $2 { print $4 }' $config
-}
-
 # run the BUILD_USER stage with logging enabled
 build_rpm_stage_logged () {
 	local build_script
 	local final_location
 
 	log "### Starting build stage at $(date)"
-
-	build_script=$(get_build_script)
-
-	if [ -z "$build_script" ]; then
-		exit_error "No rpm build script defined for ${ID}${MAJOR_VERSION} and ${mysql_label}. Please configure one."
-	fi
-
-	build_script=/data/config/build/$build_script
-	if [ ! -e "$build_script" ]; then
-		log "Missing build script in $build_script to build $mysql_label on $ID${MAJOR_VERSION}"
-		log "MAJOR_VERSION: $MAJOR_VERSION"
-		log "NAME: $NAME"
-		log "ID: $ID"
-		log "VERSION_ID: $VERSION_ID"
-		log "mysql_label: $mysql_label"
-		exit 1
-	fi
-
-	log "- sourcing: $build_script"
-	. $build_script
-	log "- sourcing: $build_script complete"
-	build
-
+	install_srpms $(get_srpm_location)
+	rpmbuild_rpms
 	rc=$?
+	log "- completed rpm build, return status: $rc"
+
 	if [ $rc = 0 ]; then
 		# Move built rpms to built location to ensure that they are kept
 		log "### Build succeeded, moving rpms to /data/built"
