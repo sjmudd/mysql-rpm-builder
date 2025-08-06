@@ -236,6 +236,8 @@ get_ossetup_script () {
 }
 
 ossetup_stage_logged () {
+	local rc
+
 	ossetup_script=$(get_ossetup_script)
 	if [ -z "$ossetup_script" ]; then
 		exit_error "No OS prepare script defined for ${ID}${MAJOR_VERSION} and ${mysql_label}. Please configure one."
@@ -255,13 +257,28 @@ ossetup_stage_logged () {
 	log "########################################################"
 	log "#    Preparing OS: $NAME ($ID $VERSION_ID)"
 	log "#    for building rpms with label $mysql_label"
+	log "#    using script $ossetup_script"
 	log "########################################################"
 	echo
-	log "Sourcing: $ossetup_script"
-	. $ossetup_script
-	log "Sourcing: $ossetup_script complete"
 
-	prepare
+	if head -1 $ossetup_script | grep -q "^#!"; then
+		if ! test -x $ossetup_script; then
+			log "$ossetup_script should be executable"
+			exit 1
+		fi
+	        log "Executing: $ossetup_script (new behaviour)"
+		$ossetup_script
+		rc=$?
+
+		log "$ossetup_script returned with status $rc"
+	else
+		log "Sourcing: $ossetup_script (legacy mode)"
+		. $ossetup_script
+		log "Sourcing: $ossetup_script complete, now running prepare function"
+
+		prepare
+	fi
+
 	setup_build_user
 
 	log

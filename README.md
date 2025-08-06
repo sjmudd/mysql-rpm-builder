@@ -342,6 +342,19 @@ the docker entry scripts to indicate the correct uid/gid to create
 for this build user for things to work more transparently but have
 not done that yet.
 
+## OS Setup scripts
+
+Originally the ossetup scripts were sourced and pulled into the main
+`build` script.  This has been modified so these setup scripts can
+be standalone scripts. This makes it easier to use them outside of
+the mysql-rpm-builder tooling.  Newer scripts will be executable
+and will be executed directly from `build` rather than being source
+and then the `prepare` function called.  There should be no functional
+difference between these behaviours. The same change is likely to
+be done for the rpmbuild setup as this then makes reporting any
+"I can not build version a.b.c" reports to upstream easier as they
+should be able to reproduce the process by running a minimal number
+of scripts from a base docker image.
 
 ## Related thoughts.
 
