@@ -1,0 +1,31 @@
+#!/bin/sh
+#
+# Create rpmbuild user
+# - currently creates a new user
+myname=$(basename $0)
+
+log () {
+	echo "$(date +'%Y-%m-%d %H:%M:%S') $myname[$$]: $@"
+}
+
+set -e
+
+BUILD_USER=${1:-rpmbuild}
+DIRECTORIES="/data/SRPMS /data/log /data/built"
+
+if ! grep $BUILD_USER /etc/passwd; then
+	log "### Adding missing build user: $BUILD_USER"
+	useradd -m $BUILD_USER
+else
+	log "### Required build user $BUILD_USER already present"
+fi
+
+# Create missing directories used for persisting data
+for dir in $DIRECTORIES; do
+	if ! test -d $dir; then
+		log "- creating missing directory: $dir, ownership set to $BUILD_USER:$BUILD_USER"
+		mkdir -p $dir
+		log "- changing user:group to $BUILD_USER:$BUILD_USER for directory $dir"
+		chown $BUILD_USER:$BUILD_USER $dir
+	fi
+done

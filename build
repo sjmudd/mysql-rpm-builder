@@ -31,7 +31,7 @@ get_os_and_version () {
 	fi
 }
 
-setup_build_user () {
+create_rpmbuild_user () {
 	if ! grep $BUILD_USER /etc/passwd; then
 		log "### Adding missing build user: $BUILD_USER"
 		useradd -m $BUILD_USER
@@ -231,6 +231,15 @@ ossetup_stage () {
 	su - $BUILD_USER $0 $mysql_label
 }
 
+# just check if this is an executable script with a shebang
+check_script_permissions () {
+	local script=$1
+
+	test -e $script || exit_error "$script not found"
+	test -x $script || exit_error "$script not executable"
+	head -1 $script | grep -q "^#!" || exit "$script has no shebang"
+}
+
 get_ossetup_script () {
 	awk -v os_version="${ID}${MAJOR_VERSION}" -v mysql_label=$mysql_label 'mysql_label == $1 && os_version == $2 { print $3 }' $config
 }
@@ -244,6 +253,8 @@ ossetup_stage_logged () {
 	fi
 
 	ossetup_script=/data/config/ossetup/$ossetup_script
+	create_rpmbuild_user=/data/config/ossetup/create_rpmbuild_user
+
 	if [ ! -e "$ossetup_script" ]; then
 		log "Missing prepare script '$ossetup_script' prepare operating system $NAME ($ID $VERSION_ID) to build MySQL version $mysql_label"
 		log "MAJOR_VERSION: $MAJOR_VERSION"
@@ -261,12 +272,8 @@ ossetup_stage_logged () {
 	log "########################################################"
 	echo
 
-	if head -1 $ossetup_script | grep -q "^#!"; then
-		if ! test -x $ossetup_script; then
-			log "$ossetup_script should be executable"
-			exit 1
-		fi
-	        log "Executing: $ossetup_script (new behaviour)"
+	if check_script_permissions $ossetup_script; then
+		log "Executing: $ossetup_script (new behaviour)"
 		$ossetup_script
 		rc=$?
 
@@ -279,7 +286,11 @@ ossetup_stage_logged () {
 		prepare
 	fi
 
-	setup_build_user
+	check_script_permissions $create_rpmbuild_user
+	log "Executing: $create_rpmbuild_user"
+	$create_rpmbuild_user
+	rc=$?
+	log "$create_rpmbuild_user returned with status $rc"
 
 	log
 	log "########################################################"
