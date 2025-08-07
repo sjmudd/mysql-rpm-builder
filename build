@@ -250,7 +250,11 @@ ossetup_stage_logged () {
 	log "########################################################"
 	echo
 
-	if check_script_permissions $ossetup_script; then
+	if head -1 $ossetup_script | grep -q "^#!"; then
+		if ! test -x $ossetup_script; then
+			log "$ossetup_script should be executable"
+			exit 1
+		fi
 		log "Executing: $ossetup_script (new behaviour)"
 		$ossetup_script
 		rc=$?
