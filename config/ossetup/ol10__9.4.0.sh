@@ -35,15 +35,23 @@ yum config-manager --set-enabled $extra_repo
 
 echo "### installing required rpms"
 yum install -y \
+	annobin-annocheck \
+	annobin-plugin-gcc \
 	bind-utils \
+	binutils  \
 	bison \
 	cmake \
 	cyrus-sasl-devel \
+	dwz \
+	gcc \
+	gcc-c++ \
+	gcc-plugin-annobin \
 	git \
 	krb5-devel \
 	libaio-devel \
 	libcurl-devel \
 	libfido2-devel \
+	libquadmath-devel \
 	libtirpc-devel \
 	libudev-devel \
 	ncurses-devel \
@@ -54,12 +62,6 @@ yum install -y \
 	perl-JSON rpcgen \
 	rpm-build \
 	time \
-	annobin-annocheck \
-	annobin-plugin-gcc \
-	binutils  \
-	dwz \
-	gcc \
-	gcc-c++ \
 	wget \
 	zlib-devel
 
