@@ -59,4 +59,4 @@ done
 shift $(($OPTIND - 1))
 
 echo "Starting mysql-rpm-builder using image: $image and parameters $*"
-docker run --rm -it --network=host --hostname=buildhost -v $PWD:/data $image $*
+docker run --rm -it --network=host --hostname=buildhost -v $PWD:/data -w /data $image $*

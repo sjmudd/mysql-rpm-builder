@@ -3,6 +3,11 @@
 ############################################################################
 #                                                                          #
 # OS Setup for OL10 for 9.4.0                                              #
+# - see: https://bugs.mysql.com/bug.php?id=118796 for initial issues       #
+#   building 9.4.0 on OL10.                                                #
+# - updates in 9.5.0 should resolve these issues.                          #
+# - pending: using dnf buildddep mysql.spec to auto-install dependencies   #
+#   and avoid having to add things explicitly here.                        #
 #                                                                          #
 ############################################################################
 
@@ -33,6 +38,22 @@ fi
 echo "### Enabling extra repo: $extra_repo"
 yum config-manager --set-enabled $extra_repo
 
+# Install EPEL repo
+if rpm -q oraclelinux-release 2>&1 >/dev/null; then
+	echo "- setting up oracle-epel-release-el10 repo"
+	yum -y install oracle-epel-release-el10
+	yum config-manager --set-enabled ol10_u0_developer_EPEL
+elif rpm -q almalinux-release 2>&1 >/dev/null; then
+	echo "- setting up epel-release repo"
+	dnf install -y epel-release
+elif rpm -q rocky-release 2>&1 >/dev/null; then
+	echo "- setting up epel-release repo"
+	dnf install -y epel-release
+else
+	echo "- EPEL repo handling not supported on this OS yet. Please fix"
+	exit 1
+fi
+
 echo "### installing required rpms"
 yum install -y \
 	annobin-annocheck \
@@ -41,6 +62,7 @@ yum install -y \
 	binutils  \
 	bison \
 	cmake \
+	curl-devel \
 	cyrus-sasl-devel \
 	dwz \
 	gcc \
@@ -58,8 +80,10 @@ yum install -y \
 	numactl-devel \
 	openldap-devel \
 	openssl-devel \
+	patchelf \
 	perl \
-	perl-JSON rpcgen \
+	perl-JSON \
+	rpcgen \
 	rpm-build \
 	time \
 	wget \
