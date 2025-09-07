@@ -111,7 +111,7 @@ install_custom_patches () {
 
 # return the src rpm location based on the build version / OS we are building
 get_srpm_location () {
-	awk -v os_version="${ID}${MAJOR_VERSION}" -v mysql_label=$mysql_label 'mysql_label == $1 && os_version == $2 { print $5 }' $config
+	awk -v os_version="${ID}${MAJOR_VERSION}" -v mysql_label=$mysql_label 'mysql_label == $1 && os_version == $2 { print $4 }' $config
 }
 
 # build package
