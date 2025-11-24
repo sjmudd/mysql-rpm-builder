@@ -209,7 +209,7 @@ ossetup_stage () {
 	su - $BUILD_USER $0 $mysql_label
 }
 
-# just check if this is an executable script with a shebang
+# Check if this is an executable script with a shebang
 check_script_permissions () {
 	local script=$1
 
@@ -250,22 +250,27 @@ ossetup_stage_logged () {
 	log "########################################################"
 	echo
 
-	if head -1 $ossetup_script | grep -q "^#!"; then
-		if ! test -x $ossetup_script; then
-			log "$ossetup_script should be executable"
-			exit 1
+	# handle new and old form of processing ossetup scripts.
+	# - if executable run the script, if not try to source it.
+	# - also if this fails explain why
+	if test -x $ossetup_script; then
+		if ! head -1 $ossetup_script | grep -q "^#!"; then
+			log "Warning: $ossetup_script expected to have a shebang header!"
 		fi
-		log "Executing: $ossetup_script (new behaviour)"
+		log "Executing: $ossetup_script as script is executable (new behaviour)"
 		$ossetup_script
 		rc=$?
 
 		log "$ossetup_script returned with status $rc"
 	else
-		log "Sourcing: $ossetup_script (legacy mode)"
+		log "Sourcing: $ossetup_script as not executable (legacy mode)"
 		. $ossetup_script
-		log "Sourcing: $ossetup_script complete, now running prepare function"
+		log "Sourcing: $ossetup_script complete, running prepare()"
 
-		prepare
+		prepare || {
+			log "Unable to run prepare() from $ossetup_script. If this is supposed to run as a shell script make it executable. Giving up"
+			exit 1
+		}
 	fi
 
 	check_script_permissions $create_rpmbuild_user
