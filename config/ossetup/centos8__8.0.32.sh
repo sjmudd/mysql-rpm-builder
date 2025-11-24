@@ -1,4 +1,4 @@
-#!/bin/sh
+# NO shebang as this file is sourced
 
 set -e
 
