@@ -369,3 +369,10 @@ instructions for triggering repeatable rpm builds from the git tree may
 be applicable. [Here](https://github.com/sjmudd/bacula-rpm-builder/) is
 an example of that.   As the git trees of many packages are the ultimate
 source using those is clearly better.
+
+## Some Reported RPM rebuild failures and related bugs
+
+- [Bug#118796: RPM spec files are missing some buildrequires](https://bugs.mysql.com/118796)
+- [Bug#115484: Missing BuildRequires for gcc-toolset-12 in mysql.spec.in for 9.0.0+](https://bugs.mysql.com/115484)
+- [Bug#111159: Incomplete documentation on MySQL rpm rebuilds makes rebuilding packages hard](https://bugs.mysql.com/111159)
+- [Bug#111088: src tarball made from github repo and provided in src.rpm files is not the same](https://bugs.mysql.com/111088)
