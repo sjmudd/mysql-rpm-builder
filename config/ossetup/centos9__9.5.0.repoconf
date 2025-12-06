@@ -1,0 +1,3 @@
+extra_repo=
+config_manager_enable=crb
+epel_repo=epel-release
