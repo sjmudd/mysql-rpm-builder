@@ -1,0 +1,3 @@
+extra_repo=ol9_codeready_builder
+epel_repo=oracle-epel-release-el9
+config_manager_enable=ol9_developer_EPEL

@@ -257,8 +257,8 @@ ossetup_stage_logged () {
 		if ! head -1 $ossetup_script | grep -q "^#!"; then
 			log "Warning: $ossetup_script expected to have a shebang header!"
 		fi
-		log "Executing: $ossetup_script as script is executable (new behaviour)"
-		$ossetup_script
+		log "Executing: $ossetup_script as script is executable (new behaviour), providing OS=${ID}${MAJOR_VERSION}, label=$mysql_label as parameters"
+		$ossetup_script ${ID}${MAJOR_VERSION} $mysql_label
 		rc=$?
 
 		log "$ossetup_script returned with status $rc"
