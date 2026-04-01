@@ -24,8 +24,8 @@ if [ ! -r $packagelist_file ]; then
     exit 1
 fi
 
-# generate a single line of package names
-packages="$(cat $packagelist_file | tr '\n' ' ')"
+# generate a single line of package names, filtering comments and blank lines
+packages="$(grep -v '^#' $packagelist_file | grep -v '^$' | tr '\n' ' ')"
 
 echo "### Installing rpms to build MySQL..."
 yum install -y $packages

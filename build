@@ -114,16 +114,27 @@ get_srpm_location () {
 	awk -v os_version="${ID}${MAJOR_VERSION}" -v mysql_label=$mysql_label 'mysql_label == $1 && os_version == $2 { print $4 }' $config
 }
 
+get_spec_prefix () {
+	local label=$1
+	# MariaDB versions: 10.x, 11.x, 12.x
+	case $label in
+		1[0-2].*) echo "MariaDB" ;;
+		*) echo "mysql" ;;
+	esac
+}
+
 # build package
 # - FIXME (add signing)
 rpmbuild_rpms () {
 	local label=${mysql_label}__${ID}${VERSION_ID}__$(date +%Y%m%d.%H%M%S)
 
 	cd ~/rpmbuild/SPECS
+	# Determine spec file prefix based on version label
+	specfile_name=$(get_spec_prefix "$mysql_label").spec
 	# Careful with spacing and quoting!
 	log "### rpmbuild started at $(date)"
 	set -x
-	rpmbuild --define 'el'$MAJOR_VERSION' 1' -ba mysql.spec
+	rpmbuild --define 'el'$MAJOR_VERSION' 1' -ba "$specfile_name"
 	rc=$?
 	set +x
 	log "### rpmbuild terminated at $(date), exit status: $rc"
