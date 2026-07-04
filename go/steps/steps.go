@@ -118,7 +118,7 @@ func (r *Runner) SetupRepos() error {
 //  3. packages — the explicitly listed packages, installed afterwards.
 func (r *Runner) InstallPackages() error {
 	b := r.Cfg.Build
-	if !b.AutoInstallDependencies && len(b.Packages) == 0 && len(b.ExtraPackages) == 0 {
+	if !b.ShouldInstallDependencies() && len(b.Packages) == 0 && len(b.ExtraPackages) == 0 {
 		return fmt.Errorf("nothing to install for %s / %s: set auto_install_dependencies or list packages", r.osLabel(), r.Cfg.Label)
 	}
 
@@ -129,13 +129,13 @@ func (r *Runner) InstallPackages() error {
 		}
 	}
 
-	if b.AutoInstallDependencies {
+	if b.ShouldInstallDependencies() {
 		logx.Log("### install-packages: resolving build dependencies with yum-builddep")
 		if err := run("yum", "install", "-y", "yum-utils"); err != nil { // provides yum-builddep
 			return err
 		}
-		// yum-builddep reads BuildRequires from the src.rpm header, which is
-		// frozen at src.rpm build time. Deps gated behind the custom el<N> macro
+		// yum-builddep reads BuildRequires: from the .spec file.
+		// Depependencies are gated behind the custom el<N> macro
 		// this project passes to rpmbuild (e.g. libquadmath-devel on el10) are
 		// not in that header, so they must be listed in extra_packages.
 		if err := run("yum-builddep", "-y", r.srpmRef()); err != nil {

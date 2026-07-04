@@ -56,12 +56,20 @@ type Build struct {
 	// AutoInstallDependencies lets yum-builddep determine and install the
 	// src.rpm's BuildRequires instead of (or in addition to) listing them all
 	// in Packages. Must be true/false.
-	AutoInstallDependencies bool `yaml:"auto_install_dependencies"`
+	AutoInstallDependencies *bool `yaml:"auto_install_dependencies,omitempty"`
 	// ExtraPackages are packages missing from the src.rpm's BuildRequires that
 	// yum-builddep would not install; they are installed first.
 	ExtraPackages []string `yaml:"extra_packages"`
 	Packages      []string `yaml:"packages"`
 	Tweaks        []string `yaml:"tweaks"`
+}
+
+// ShouldInstallDependencies returns true if we explicitly set AutoInstallDependencies to true
+func (b Build) ShouldInstallDependencies() bool {
+	if b.AutoInstallDependencies != nil {
+		return *b.AutoInstallDependencies
+	}
+	return false
 }
 
 // imagesFile mirrors the top level of images.yaml.

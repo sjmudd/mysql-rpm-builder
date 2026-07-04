@@ -1,34 +1,33 @@
 # MySQL rpm (re)builder
 
-note: As of commit 30776d5bffc7daa7d6a206ebde630d2f3771975b the build
-code was converted to golang from the previous shell script configuration.
+As of commit 30776d5bffc7daa7d6a206ebde630d2f3771975b the build code
+was converted to golang from the previous shell script configuration.
 
 ## Overview
 
 ### Trigger repeatable MySQL rpm builds from a src rpm.
 
 This repo has two main purposes:
-- build binary rpms from the src.rpm in a repeatable manner ensuring the
+- Build binary rpms from the src.rpm in a repeatable manner ensuring the
   exact build requirements are defined.
   While rpm does have a `BuildRequires:` section intended to provide the
-  list of build dependencies often this is far from precise and it is
-  often incomplete.  This can mean that if your build environment is
-  setup differently to mine you can build binary packages but I can not,
-  something which is problematic.  This repo is intended to make the OS
+  list of build dependencies often this has been incomplete.
+  This can make it hard to setup a correct build build environment
+  consistently which is problematic.  This repo is intended to make the OS
   environment build process explicit (e.g when building from a docker
   image) and also ensures the subsequent rpm-build run is explicit too.
-- build patched versions of the original src rpm with minimal changes.
+- Build patched versions of the original src rpm with minimal changes.
   Along the same lines as the previous step we can now build a patched
   version of the upstream src.rpms by providing the required changes,
-  usually a patch, and building using the same process as before.
+  usually a patch, following the same build procedure as above.
 
 **Intention**: to build from an empty OS container, ensure the build
 environment is setup explicitly and then to build as a non-root user.
 
-I have found that the docs on performing a rebuild, at least as done
-by upstream vendors, may be far from complete and this has made building
-for a new OS or wanting to build the existing software with a specific
-patch much harder than expected.
+I have found that the docs on performing a rebuild, at least as done by
+upstream vendors, to be incomplete and this has made building for a new
+OS or wanting to build the existing software with a specific patch much
+harder than expected.
 
 Given a known initial state (the bare OS from docker), the build is
 driven entirely by declarative configuration and a single self-contained
@@ -79,6 +78,10 @@ combinations of MySQL 8.4.x and 9.x across Oracle Linux, Rocky Linux,
 AlmaLinux and CentOS Stream. Older el7/el8 combinations can be added the
 same way (see [Configuration](#configuration)).
 
+I have removed the older configurations from my repo when moving from
+the old `build.conf` to `build.yaml` format, but intend to add back
+more settings for older OS or MySQL versions.
+
 ## Configuration
 
 Configuration is declarative YAML, layered **OS → MySQL version**:
@@ -124,7 +127,7 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
      `BuildRequires`, installed first.
   2. **`auto_install_dependencies: true`** — installs `yum-utils` (which
      provides `yum-builddep`) and runs `yum-builddep` on the src.rpm to
-     resolve its `BuildRequires`. Must be `true`/`false` (not `yes`/`no`).
+     resolve its `BuildRequires`. Optional. If present must be `true`/`false`.
   3. **`packages`** — an explicit list, installed last.
 
   At least one of `auto_install_dependencies` or `packages` must be set.
@@ -132,14 +135,16 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
   records the deps per `(os, version)` explicitly; `auto_install_dependencies`
   instead delegates to the src.rpm's own `BuildRequires`, which is shorter but
   relies on that list being complete (hence `extra_packages` to fill gaps).
+  It also relies on builddep working correctly but there are bugs.
+  See: https://bugzilla.redhat.com/show_bug.cgi?id=2497059
 
 ### Adding a build
 
 1. Ensure the OS exists in `images.yaml` (image + repos).
 2. Add a `<version>:` block under `oses.<os>.builds` in `config.yaml` with
    the `srpm:` URL, an `auto_install_dependencies:` flag, and a `packages:`
-   list (and/or `extra_packages:`) — usually by copying the previous
-   version's block.
+   list (and/or `extra_packages:`) — usually copying the previous
+   version's block is sufficient, but beware of compiler/other changes over time.
 3. Build it: `./build_one <os> <version>`.
 
 ## Build Process

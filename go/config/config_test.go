@@ -36,8 +36,8 @@ func TestResolveSuccess(t *testing.T) {
 	if !reflect.DeepEqual(got.Build.Packages, []string{"cmake", "gcc", "gcc-c++"}) {
 		t.Errorf("Packages = %v, unexpected", got.Build.Packages)
 	}
-	if !got.Build.AutoInstallDependencies {
-		t.Errorf("AutoInstallDependencies = false, want true")
+	if !got.Build.ShouldInstallDependencies() {
+		t.Errorf("ShouldInstallDependencies() = false, want true")
 	}
 	if !reflect.DeepEqual(got.Build.ExtraPackages, []string{"rpcgen", "patchelf"}) {
 		t.Errorf("ExtraPackages = %v, unexpected", got.Build.ExtraPackages)
@@ -54,8 +54,8 @@ func TestResolveDefaultsWhenFieldsOmitted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.Build.AutoInstallDependencies {
-		t.Errorf("AutoInstallDependencies = true, want false")
+	if got.Build.ShouldInstallDependencies() {
+		t.Errorf("ShouldInstallDependencies() = true, want false")
 	}
 	if got.Build.ExtraPackages != nil {
 		t.Errorf("ExtraPackages = %v, want nil when omitted", got.Build.ExtraPackages)
