@@ -30,7 +30,9 @@ lint:
 
 ## build: compile the static binary
 .PHONY: build
-build:
+build: $(BINARY)
+
+$(BINARY): go.mod go.sum $(wildcard go/*/*.go)
 	go build -o $(BINARY) $(PKG)
 
 ## test: run the Go test suite (none yet, but wired up)
