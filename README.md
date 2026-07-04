@@ -98,9 +98,9 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
 
 - **`config.yaml`** — the build matrix, a chronological sequence of builds
   per OS. Each `(os, version)` entry is fully explicit: its own source RPM
-  URL, package list, and optional shell `tweaks`. There is deliberately no
-  inheritance — to add a new release, copy the newest block for that OS and
-  bump the version key + srpm URL.
+  URL, how build dependencies are installed, and optional shell `tweaks`.
+  There is deliberately no inheritance — to add a new release, copy the
+  newest block for that OS and bump the version key + srpm URL.
 
   ```yaml
   oses:
@@ -108,21 +108,37 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
       builds:
         9.7.0:
           srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.0-1.el10.src.rpm
+          auto_install_dependencies: false
           packages: [cmake, gcc, gcc-c++, ...]
         9.7.1:                 # copy of 9.7.0, version + srpm bumped
           srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el10.src.rpm
-          packages: [cmake, gcc, gcc-c++, ...]
+          auto_install_dependencies: true          # let yum-builddep resolve BuildRequires
+          extra_packages: [rpcgen]                 # missing from BuildRequires; installed first
+          packages: []                             # nothing extra needed
   ```
 
-The package list is recorded per `(os, version)` because MySQL build
-dependencies (compilers/toolsets) change between MySQL releases and differ
-slightly per OS flavour.
+  Build dependencies are installed in this order, each step skipped when its
+  field is empty/false (so an entry with only `packages` behaves as before):
+
+  1. **`extra_packages`** — packages missing from the src.rpm's
+     `BuildRequires`, installed first.
+  2. **`auto_install_dependencies: true`** — installs `yum-utils` (which
+     provides `yum-builddep`) and runs `yum-builddep` on the src.rpm to
+     resolve its `BuildRequires`. Must be `true`/`false` (not `yes`/`no`).
+  3. **`packages`** — an explicit list, installed last.
+
+  At least one of `auto_install_dependencies` or `packages` must be set.
+  Listing everything in `packages` (with `auto_install_dependencies: false`)
+  records the deps per `(os, version)` explicitly; `auto_install_dependencies`
+  instead delegates to the src.rpm's own `BuildRequires`, which is shorter but
+  relies on that list being complete (hence `extra_packages` to fill gaps).
 
 ### Adding a build
 
 1. Ensure the OS exists in `images.yaml` (image + repos).
 2. Add a `<version>:` block under `oses.<os>.builds` in `config.yaml` with
-   the `srpm:` URL and `packages:` list — usually by copying the previous
+   the `srpm:` URL, an `auto_install_dependencies:` flag, and a `packages:`
+   list (and/or `extra_packages:`) — usually by copying the previous
    version's block.
 3. Build it: `./build_one <os> <version>`.
 

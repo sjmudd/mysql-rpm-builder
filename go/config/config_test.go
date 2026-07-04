@@ -36,8 +36,29 @@ func TestResolveSuccess(t *testing.T) {
 	if !reflect.DeepEqual(got.Build.Packages, []string{"cmake", "gcc", "gcc-c++"}) {
 		t.Errorf("Packages = %v, unexpected", got.Build.Packages)
 	}
+	if !got.Build.AutoInstallDependencies {
+		t.Errorf("AutoInstallDependencies = false, want true")
+	}
+	if !reflect.DeepEqual(got.Build.ExtraPackages, []string{"rpcgen", "patchelf"}) {
+		t.Errorf("ExtraPackages = %v, unexpected", got.Build.ExtraPackages)
+	}
 	if !reflect.DeepEqual(got.Repos.Enable, []string{"ol10_codeready_builder"}) {
 		t.Errorf("Repos.Enable = %v, unexpected", got.Repos.Enable)
+	}
+}
+
+func TestResolveDefaultsWhenFieldsOmitted(t *testing.T) {
+	c := loadTestdata(t)
+	// ol10/9.7.0 sets auto_install_dependencies: false and omits extra_packages.
+	got, err := c.Resolve("ol10", "9.7.0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Build.AutoInstallDependencies {
+		t.Errorf("AutoInstallDependencies = true, want false")
+	}
+	if got.Build.ExtraPackages != nil {
+		t.Errorf("ExtraPackages = %v, want nil when omitted", got.Build.ExtraPackages)
 	}
 }
 

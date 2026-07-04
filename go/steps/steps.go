@@ -60,6 +60,10 @@ func (r *Runner) osLabel() string { return r.OS.OSLabel() }
 // elDefine is the rpm macro name, e.g. "el10".
 func (r *Runner) elDefine() string { return fmt.Sprintf("el%d", r.OS.Major) }
 
+// rpmDefine is the `--define` argument passed to rpmbuild (and yum-builddep so
+// it evaluates the same conditional BuildRequires), e.g. "el10 1".
+func (r *Runner) rpmDefine() string { return r.elDefine() + " 1" }
+
 // srpmsDir / logDir / builtDir are the persisted data directories.
 func (r *Runner) srpmsDir() string { return filepath.Join(r.DataDir, "SRPMS") }
 func (r *Runner) logDir() string   { return filepath.Join(r.DataDir, "log") }
@@ -105,14 +109,61 @@ func (r *Runner) SetupRepos() error {
 }
 
 // InstallPackages installs the build dependencies for this (os, version).
+//
+// The steps run in order:
+//  1. extra_packages — packages missing from the src.rpm's BuildRequires,
+//     installed first so they are present however the rest are resolved.
+//  2. auto_install_dependencies — if set, install yum-utils (which provides
+//     yum-builddep) and let yum-builddep resolve the src.rpm's BuildRequires.
+//  3. packages — the explicitly listed packages, installed afterwards.
 func (r *Runner) InstallPackages() error {
-	pkgs := r.Cfg.Build.Packages
-	if len(pkgs) == 0 {
-		return fmt.Errorf("no packages configured for %s / %s", r.osLabel(), r.Cfg.Label)
+	b := r.Cfg.Build
+	if !b.AutoInstallDependencies && len(b.Packages) == 0 && len(b.ExtraPackages) == 0 {
+		return fmt.Errorf("nothing to install for %s / %s: set auto_install_dependencies or list packages", r.osLabel(), r.Cfg.Label)
 	}
-	logx.Logf("### install-packages: installing %d packages", len(pkgs))
-	args := append([]string{"install", "-y"}, pkgs...)
-	return run("yum", args...)
+
+	if len(b.ExtraPackages) > 0 {
+		logx.Logf("### install-packages: installing %d extra package(s) missing from BuildRequires", len(b.ExtraPackages))
+		if err := run("yum", append([]string{"install", "-y"}, b.ExtraPackages...)...); err != nil {
+			return err
+		}
+	}
+
+	if b.AutoInstallDependencies {
+		logx.Log("### install-packages: resolving build dependencies with yum-builddep")
+		if err := run("yum", "install", "-y", "yum-utils"); err != nil { // provides yum-builddep
+			return err
+		}
+		// yum-builddep reads BuildRequires from the src.rpm header, which is
+		// frozen at src.rpm build time. Deps gated behind the custom el<N> macro
+		// this project passes to rpmbuild (e.g. libquadmath-devel on el10) are
+		// not in that header, so they must be listed in extra_packages.
+		if err := run("yum-builddep", "-y", r.srpmRef()); err != nil {
+			return err
+		}
+	}
+
+	if len(b.Packages) > 0 {
+		logx.Logf("### install-packages: installing %d package(s)", len(b.Packages))
+		if err := run("yum", append([]string{"install", "-y"}, b.Packages...)...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// srpmRef returns a reference to the source RPM for yum-builddep: the cached
+// local copy under SRPMS/ if it has already been downloaded, otherwise the
+// remote URL (yum-builddep can fetch it directly). InstallPackages runs before
+// the rpmbuild user's install-srpm stage, so on a first build the cache is
+// usually empty and the URL is used.
+func (r *Runner) srpmRef() string {
+	url := r.Cfg.Build.SRPM
+	cached := filepath.Join(r.srpmsDir(), filepath.Base(url))
+	if _, err := os.Stat(cached); err == nil {
+		return cached
+	}
+	return url
 }
 
 // FixAnnobin works around the gcc-toolset annobin plugin naming mismatch.
@@ -294,8 +345,7 @@ func (r *Runner) RPMBuild() error {
 	}
 	specs := filepath.Join(home, "SPECS")
 	logx.Logf("### rpmbuild: started at %s", time.Now().UTC().Format(time.RFC3339))
-	define := r.elDefine() + " 1"
-	buildErr := runIn(specs, "rpmbuild", "--define", define, "-ba", "mysql.spec")
+	buildErr := runIn(specs, "rpmbuild", "--define", r.rpmDefine(), "-ba", "mysql.spec")
 	logx.Logf("### rpmbuild: finished, error=%v", buildErr)
 
 	qa := filepath.Join(r.logDir(), "rpm-qa."+r.runLabel())

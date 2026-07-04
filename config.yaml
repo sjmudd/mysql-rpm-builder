@@ -3,6 +3,19 @@
 # Each entry is fully explicit for each OS / MySQL version combination.
 # Ideally when a new version of MySQL is released you can use the settings
 # from the previously built version. Sometimes this needs tweaking.
+#
+# Per-build fields:
+#   srpm                        (required) URL of the source RPM to build.
+#   auto_install_dependencies   (required) true/false. When true, yum-builddep
+#                               resolves the src.rpm's BuildRequires (yum-utils
+#                               is installed first as it provides yum-builddep).
+#   extra_packages              (optional) packages missing from the src.rpm's
+#                               BuildRequires; installed first, before builddep.
+#   packages                    (optional) explicit packages, installed last.
+#
+# Build deps are installed in the order: extra_packages, then yum-builddep (if
+# auto_install_dependencies), then packages. At least one of
+# auto_install_dependencies or packages must be set.
 oses:
   #
   # Alma Linux
@@ -11,24 +24,30 @@ oses:
     builds:
       9.5.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.5.0-1.el9.src.rpm
+        auto_install_dependencies: false
         packages: [bind-utils, bison, cmake, cyrus-sasl-devel, gcc-toolset-12-annobin-annocheck, gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils, gcc-toolset-12-dwz, gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++, gcc-toolset-14-annobin-annocheck, gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils, gcc-toolset-14-dwz, gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, systemd, time, wget, zlib-devel]
       9.7.1:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el9.src.rpm
+        auto_install_dependencies: false
         packages: [bind-utils, bison, cmake, cyrus-sasl-devel, gcc-toolset-12-annobin-annocheck, gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils, gcc-toolset-12-dwz, gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++, gcc-toolset-14-annobin-annocheck, gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils, gcc-toolset-14-dwz, gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, systemd, time, wget, zlib-devel]
 
   almalinux10:
     builds:
       8.4.6:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-community-8.4.6-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, time, wget, zlib-devel]
       9.4.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.4.0-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, time, wget, zlib-devel]
       9.5.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.5.0-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, time, wget, zlib-devel]
       9.7.1:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, time, wget, zlib-devel]
   #
   # CentOS
@@ -37,9 +56,11 @@ oses:
     builds:
       9.5.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.5.0-1.el9.src.rpm
+        auto_install_dependencies: false
         packages: [bind-utils, bison, cmake, cyrus-sasl-devel, gcc-toolset-12-annobin-annocheck, gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils, gcc-toolset-12-dwz, gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++, gcc-toolset-14-annobin-annocheck, gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils, gcc-toolset-14-dwz, gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, systemd, time, wget, zlib-devel]
       9.7.1:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el9.src.rpm
+        auto_install_dependencies: false
         packages: [bind-utils, bison, cmake, cyrus-sasl-devel, gcc-toolset-12-annobin-annocheck, gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils, gcc-toolset-12-dwz, gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++, gcc-toolset-14-annobin-annocheck, gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils, gcc-toolset-14-dwz, gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, systemd, time, wget, zlib-devel]
   #
   # Oracle Linux
@@ -48,40 +69,67 @@ oses:
     builds:
       9.4.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.4.0-1.el9.src.rpm
+        auto_install_dependencies: false
         packages: [bind-utils, bison, cmake, cyrus-sasl-devel, gcc-toolset-12-annobin-annocheck, gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils, gcc-toolset-12-dwz, gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++, gcc-toolset-14-annobin-annocheck, gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils, gcc-toolset-14-dwz, gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, systemd, time, wget, zlib-devel]
       9.5.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.5.0-1.el9.src.rpm
+        auto_install_dependencies: false
         packages: [bind-utils, bison, cmake, cyrus-sasl-devel, gcc-toolset-12-annobin-annocheck, gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils, gcc-toolset-12-dwz, gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++, gcc-toolset-14-annobin-annocheck, gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils, gcc-toolset-14-dwz, gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, systemd, time, wget, zlib-devel]
       9.6.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.6.0-1.el9.src.rpm
+        auto_install_dependencies: false
         packages: [bind-utils, bison, cmake, cyrus-sasl-devel, gcc-toolset-12-annobin-annocheck, gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils, gcc-toolset-12-dwz, gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++, gcc-toolset-14-annobin-annocheck, gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils, gcc-toolset-14-dwz, gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, systemd, time, wget, zlib-devel]
       9.7.1:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.0-1.el9.src.rpm
+        auto_install_dependencies: false
         packages: [bind-utils, bison, cmake, cyrus-sasl-devel, gcc-toolset-12-annobin-annocheck, gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils, gcc-toolset-12-dwz, gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++, gcc-toolset-14-annobin-annocheck, gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils, gcc-toolset-14-dwz, gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, systemd, time, wget, zlib-devel]
 
   ol10:
     builds:
       8.4.6:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-community-8.4.6-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, time, wget, zlib-devel]
       8.4.7:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-community-8.4.7-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, time, wget, zlib-devel]
       9.4.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.4.0-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, time, wget, zlib-devel]
       9.5.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.5.0-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, time, wget, zlib-devel]
       9.6.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.6.0-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, time, wget, zlib-devel]
       9.7.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.0-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, time, wget, zlib-devel]
       9.7.1:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, time, wget, zlib-devel]
+      # Same as 9.7.1 but with no explicit packages: let yum-builddep resolve
+      # everything from the src.rpm's BuildRequires, to see what (if anything)
+      # is missing compared to the explicit list above. wget is needed by the
+      # install-srpm step itself (not a BuildRequires), so it goes in
+      # extra_packages.
+      9.7.1.no_packages:
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el10.src.rpm
+        auto_install_dependencies: true
+        # Packages yum-builddep does not install from the src.rpm header:
+        #   wget             - needed by the install-srpm step itself
+        #   rpm-build        - provides rpmbuild; not a BuildRequires
+        #   libquadmath-devel- BuildRequires gated behind the el10 macro, which
+        #                      yum-builddep ignores for a .src.rpm target
+        #                      (see docs/yum-builddep-define-srpm-bug.md)
+        #  Note: Future code changes will remove wget, rpm-build from this list as they are always needed as part of the mysql-rpm-builder workflow
+        extra_packages: [wget, rpm-build, libquadmath-devel]
   #
   # Rocky Linux
   #
@@ -89,25 +137,32 @@ oses:
     builds:
       9.4.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.4.0-1.el9.src.rpm
+        auto_install_dependencies: false
         packages: [bind-utils, bison, cmake, cyrus-sasl-devel, gcc-toolset-12-annobin-annocheck, gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils, gcc-toolset-12-dwz, gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++, gcc-toolset-14-annobin-annocheck, gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils, gcc-toolset-14-dwz, gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, systemd, time, wget, zlib-devel]
       9.5.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.5.0-1.el9.src.rpm
+        auto_install_dependencies: false
         packages: [bind-utils, bison, cmake, cyrus-sasl-devel, gcc-toolset-12-annobin-annocheck, gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils, gcc-toolset-12-dwz, gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++, gcc-toolset-14-annobin-annocheck, gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils, gcc-toolset-14-dwz, gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, systemd, time, wget, zlib-devel]
       9.6.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.6.0-1.el9.src.rpm
+        auto_install_dependencies: false
         packages: [bind-utils, bison, cmake, cyrus-sasl-devel, gcc-toolset-12-annobin-annocheck, gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils, gcc-toolset-12-dwz, gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++, gcc-toolset-14-annobin-annocheck, gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils, gcc-toolset-14-dwz, gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, systemd, time, wget, zlib-devel]
 
   rocky10:
     builds:
       8.4.6:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-community-8.4.6-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, time, wget, zlib-devel]
       9.4.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.4.0-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, time, wget, zlib-devel]
       9.5.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.5.0-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, time, wget, zlib-devel]
       9.7.1:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el10.src.rpm
+        auto_install_dependencies: false
         packages: [annobin-annocheck, annobin-plugin-gcc, bind-utils, binutils, bison, cmake, curl-devel, cyrus-sasl-devel, dwz, gcc, gcc-c++, gcc-plugin-annobin, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, rpm-build, systemd, systemd-devel, time, wget, zlib-devel]
