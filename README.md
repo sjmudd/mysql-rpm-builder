@@ -59,10 +59,9 @@ The binary is invoked by subcommand:
 | Command | Where | Purpose |
 |---|---|---|
 | `build-one [-n] <os> <label>` | host | launch a Docker container and build `<label>` on `<os>` |
-| `run <label>` | container | full build (OS prep + rpmbuild); invoked by `build-one` |
-| `setup <label>` | container (root) | run all OS-prep stages, then hand off to the build stage |
-| `build <label>` | container (rpmbuild) | run all rpmbuild-user stages |
-| `refresh` / `setup-repos` / `install-packages` / `os-tweaks` / `create-user` `<label>` | container (root) | individual OS-prep steps |
+| `run <label>` / `setup <label>` | container (root) | full build: run all OS-prep stages, then drive the build across privilege boundaries; invoked by `build-one` |
+| `build-rpm <label>` | container (rpmbuild) | patch → rpmbuild → collect (run after `install-srpm`/`install-builddeps`) |
+| `refresh` / `setup-repos` / `install-packages` / `fix-annobin` / `os-tweaks` / `create-user` / `install-builddeps` `<label>` | container (root) | individual OS-prep / build-dep steps |
 | `install-srpm` / `apply-patches` / `rpmbuild` / `collect` `<label>` | container (rpmbuild) | individual build steps |
 
 Every step is individually runnable, which makes debugging a failed build
@@ -145,9 +144,9 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
 
 1. Ensure the OS exists in `images.yaml` (image + repos).
 2. Add a `<version>:` block under `oses.<os>.builds` in `config.yaml` with
-   the `srpm:` URL, an `auto_install_dependencies:` flag, and a `packages:`
-   list — usually copying the previous version's block is sufficient, but
-   beware of compiler/other changes over time.
+   the `srpm:` URL and an `auto_install_dependencies:` flag (plus an optional
+   `packages:` list) — usually copying the previous version's block is
+   sufficient, but beware of compiler/other changes over time.
 3. Build it: `./build-one <os> <version>`.
 
 ## Build Process
@@ -173,10 +172,21 @@ docker run --rm --network=host --hostname=buildhost \
     /data/mysql-rpm-builder run 9.7.1
 ```
 
-Inside the container `run` executes as root: it prepares the OS
-(`refresh` → `setup-repos` → `install-packages` → `os-tweaks` →
-`create-user`), then re-execs itself as the non-root `rpmbuild` user to run
-the build (`install-srpm` → `apply-patches` → `rpmbuild` → `collect`).
+Inside the container `run` executes as root and prepares the OS
+(`refresh` → `setup-repos` → `install-packages` → `fix-annobin` →
+`os-tweaks` → `create-user`), then drives the build across privilege
+boundaries:
+
+1. as the non-root `rpmbuild` user, fetch and extract the source RPM
+   (`install-srpm`) — this lays down `mysql.spec`;
+2. back as root, resolve the spec's build dependencies
+   (`install-builddeps`, when `auto_install_dependencies` is set);
+3. as `rpmbuild` again, patch, build and collect
+   (`apply-patches` → `rpmbuild` → `collect`).
+
+`install-builddeps` must run as root but needs the spec that `install-srpm`
+lays down as the build user, which is why the build-user work is split
+around it.
 
 Use `./build-one -n <os> <version>` for a dry run that prints the docker
 command without executing it.
@@ -228,10 +238,23 @@ Then, as root, run the OS-prep steps:
 # /data/mysql-rpm-builder create-user 9.7.1
 ```
 
-and, as the `rpmbuild` user (`su - rpmbuild`), the build steps:
+then, as the `rpmbuild` user (`su - rpmbuild`), fetch and extract the source
+RPM:
 
 ```
 $ /data/mysql-rpm-builder install-srpm 9.7.1
+```
+
+back as root, resolve the build dependencies from the extracted spec (only
+needed when `auto_install_dependencies` is set for this build):
+
+```
+# /data/mysql-rpm-builder install-builddeps 9.7.1
+```
+
+and, as the `rpmbuild` user again, the remaining build steps:
+
+```
 $ /data/mysql-rpm-builder apply-patches 9.7.1
 $ /data/mysql-rpm-builder rpmbuild 9.7.1
 $ /data/mysql-rpm-builder collect 9.7.1
