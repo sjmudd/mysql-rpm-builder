@@ -45,23 +45,19 @@ type OSDef struct {
 
 // Build is a single, fully-explicit build entry from config.yaml.
 //
-// Build dependencies are installed in this order (see steps.Runner.InstallPackages):
-//  1. ExtraPackages — packages missing from the src.rpm's BuildRequires,
-//     installed first so they are present however the rest are resolved.
-//  2. if AutoInstallDependencies is set, yum-builddep resolves the src.rpm's
-//     BuildRequires (yum-utils is installed first, as it provides yum-builddep).
-//  3. Packages — the explicitly listed packages, installed afterwards.
+// Packages are installed as root (steps.Runner.InstallPackages) before the
+// build. When AutoInstallDependencies is set, yum-builddep additionally
+// resolves the spec's BuildRequires in the separate install-builddeps step
+// (see steps.Runner.InstallBuildDeps); Packages then only needs the tooling
+// that is not a BuildRequires (e.g. wget, rpm-build).
 type Build struct {
 	SRPM string `yaml:"srpm"`
 	// AutoInstallDependencies lets yum-builddep determine and install the
-	// src.rpm's BuildRequires instead of (or in addition to) listing them all
+	// spec's BuildRequires instead of (or in addition to) listing them all
 	// in Packages. Must be true/false.
-	AutoInstallDependencies *bool `yaml:"auto_install_dependencies,omitempty"`
-	// ExtraPackages are packages missing from the src.rpm's BuildRequires that
-	// yum-builddep would not install; they are installed first.
-	ExtraPackages []string `yaml:"extra_packages"`
-	Packages      []string `yaml:"packages"`
-	Tweaks        []string `yaml:"tweaks"`
+	AutoInstallDependencies *bool    `yaml:"auto_install_dependencies,omitempty"`
+	Packages                []string `yaml:"packages"`
+	Tweaks                  []string `yaml:"tweaks"`
 }
 
 // ShouldInstallDependencies returns true if we explicitly set AutoInstallDependencies to true

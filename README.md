@@ -116,35 +116,38 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
         9.7.1:                 # copy of 9.7.0, version + srpm bumped
           srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el10.src.rpm
           auto_install_dependencies: true          # let yum-builddep resolve BuildRequires
-          extra_packages: [rpcgen]                 # missing from BuildRequires; installed first
-          packages: []                             # nothing extra needed
+                                                   # (no packages list needed)
   ```
 
-  Build dependencies are installed in this order, each step skipped when its
-  field is empty/false (so an entry with only `packages` behaves as before):
+  The base tooling every build needs — `wget` (to fetch the src.rpm) and
+  `rpm-build` (provides `rpmbuild`) — is installed unconditionally by the
+  program (right after the initial `yum update`), so it never needs listing.
 
-  1. **`extra_packages`** — packages missing from the src.rpm's
-     `BuildRequires`, installed first.
-  2. **`auto_install_dependencies: true`** — installs `yum-utils` (which
-     provides `yum-builddep`) and runs `yum-builddep` on the src.rpm to
-     resolve its `BuildRequires`. Optional. If present must be `true`/`false`.
-  3. **`packages`** — an explicit list, installed last.
+  There are two ways to supply the remaining build dependencies:
+
+  1. **`packages`** — an explicit list, installed as root before the build.
+  2. **`auto_install_dependencies: true`** — the `install-builddeps` step
+     installs `yum-utils` (which provides `yum-builddep`) and runs
+     `yum-builddep` against the *extracted `mysql.spec`* to resolve its
+     `BuildRequires`. Optional. If present must be `true`/`false`.
 
   At least one of `auto_install_dependencies` or `packages` must be set.
   Listing everything in `packages` (with `auto_install_dependencies: false`)
   records the deps per `(os, version)` explicitly; `auto_install_dependencies`
-  instead delegates to the src.rpm's own `BuildRequires`, which is shorter but
-  relies on that list being complete (hence `extra_packages` to fill gaps).
-  It also relies on builddep working correctly but there are bugs.
-  See: https://bugzilla.redhat.com/show_bug.cgi?id=2497059
+  instead delegates to the spec's own `BuildRequires`, so `packages` can usually
+  be omitted entirely.
+
+  Note `yum-builddep` is run against the `.spec` file, not the `.src.rpm`:
+  it ignores macro-conditional `BuildRequires` (and `--define`) for a
+  `.src.rpm` target. See: https://bugzilla.redhat.com/show_bug.cgi?id=2497059
 
 ### Adding a build
 
 1. Ensure the OS exists in `images.yaml` (image + repos).
 2. Add a `<version>:` block under `oses.<os>.builds` in `config.yaml` with
    the `srpm:` URL, an `auto_install_dependencies:` flag, and a `packages:`
-   list (and/or `extra_packages:`) — usually copying the previous
-   version's block is sufficient, but beware of compiler/other changes over time.
+   list — usually copying the previous version's block is sufficient, but
+   beware of compiler/other changes over time.
 3. Build it: `./build-one <os> <version>`.
 
 ## Build Process

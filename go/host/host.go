@@ -4,7 +4,7 @@
 
 // Package host implements the host-side `build-one` command: it resolves the
 // container image for an OS and runs the builder inside Docker, mirroring the
-// original build_one bash script.
+// original build-one bash script.
 package host
 
 import (

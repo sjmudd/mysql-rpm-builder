@@ -9,9 +9,9 @@
 // subcommand:
 //
 //   - Host:          build-one [-n] <os> <label>   launch a container build
-//   - Orchestration: run|setup|build <label>       run inside the container
+//   - Orchestration: run|setup|build-rpm <label>   run inside the container
 //   - Individual:    refresh|setup-repos|install-packages|fix-annobin|os-tweaks
-//     |create-user|install-srpm|apply-patches|rpmbuild|collect <label>
+//     |create-user|install-srpm|install-builddeps|apply-patches|rpmbuild|collect <label>
 //
 // The individual step commands let a failed stage be re-run in a debug
 // container without repeating the expensive rpmbuild.
@@ -42,9 +42,9 @@ func main() {
 	switch cmd {
 	case "build-one":
 		runBuildOne(rest)
-	case "run", "setup", "build",
+	case "run", "setup", "build-rpm",
 		"refresh", "setup-repos", "install-packages", "fix-annobin", "os-tweaks", "create-user",
-		"install-srpm", "apply-patches", "rpmbuild", "collect":
+		"install-srpm", "install-builddeps", "apply-patches", "rpmbuild", "collect":
 		runContainer(cmd, rest)
 	case "version", "-v", "--version":
 		fmt.Printf("mysql-rpm-builder %s\n", version.Version)
@@ -101,19 +101,20 @@ A build stopped early by -test/-until/-timeout is reported as success (rc 0).
 // stageNeeds records the required privilege for each in-container command.
 // true = must run as root; false = must run as the (non-root) build user.
 var stageNeedsRoot = map[string]bool{
-	"setup":            true,
-	"run":              true,
-	"refresh":          true,
-	"setup-repos":      true,
-	"install-packages": true,
-	"fix-annobin":      true,
-	"os-tweaks":        true,
-	"create-user":      true,
-	"build":            false,
-	"install-srpm":     false,
-	"apply-patches":    false,
-	"rpmbuild":         false,
-	"collect":          false,
+	"setup":             true,
+	"run":               true,
+	"refresh":           true,
+	"setup-repos":       true,
+	"install-packages":  true,
+	"fix-annobin":       true,
+	"os-tweaks":         true,
+	"create-user":       true,
+	"install-builddeps": true,
+	"build-rpm":         false,
+	"install-srpm":      false,
+	"apply-patches":     false,
+	"rpmbuild":          false,
+	"collect":           false,
 }
 
 // runContainer handles all in-container commands.
@@ -134,7 +135,7 @@ func runContainer(cmd string, args []string) {
 	switch cmd {
 	case "setup", "run":
 		teeTo(r.LogFileFor("ossetup"))
-	case "build":
+	case "build-rpm":
 		teeTo(r.LogFileFor("build"))
 	}
 
@@ -144,8 +145,8 @@ func runContainer(cmd string, args []string) {
 	switch cmd {
 	case "run", "setup":
 		stageErr = r.Setup()
-	case "build":
-		stageErr = r.Build()
+	case "build-rpm":
+		stageErr = r.BuildRPM()
 	case "refresh":
 		stageErr = r.Refresh()
 	case "setup-repos":
@@ -160,6 +161,8 @@ func runContainer(cmd string, args []string) {
 		stageErr = r.CreateUser()
 	case "install-srpm":
 		stageErr = r.InstallSRPM()
+	case "install-builddeps":
+		stageErr = r.InstallBuildDeps()
 	case "apply-patches":
 		stageErr = r.ApplyPatches()
 	case "rpmbuild":
@@ -205,12 +208,14 @@ Host:
 
 In-container orchestration:
   run <label>                   full build (setup + rpmbuild), invoked by build-one
-  setup <label>                 root OS-prep stages, then hands off to build
-  build <label>                 rpmbuild-user stages
+  setup <label>                 root OS-prep, then drives install-srpm,
+                                install-builddeps (root) and build-rpm
+  build-rpm <label>             rpmbuild-user stages after install-srpm/builddep
 
 In-container individual steps (root):
   refresh <label> | setup-repos <label> | install-packages <label>
   fix-annobin <label> | os-tweaks <label> | create-user <label>
+  install-builddeps <label>
 
 In-container individual steps (rpmbuild user):
   install-srpm <label> | apply-patches <label> | rpmbuild <label> | collect <label>

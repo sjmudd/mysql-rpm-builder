@@ -25,8 +25,12 @@ import (
 // BuildUser is the non-root user that runs the rpmbuild stage.
 const BuildUser = "rpmbuild"
 
-// DataDir is where the repository is mounted inside the container.
-const DataDir = "/data"
+const (
+	// DataDir is where the repository is mounted inside the container.
+	DataDir = "/data"
+	// SpecFile is the name of the RPM spec, consistent across MySQL versions.
+	SpecFile = "mysql.spec"
+)
 
 // Runner carries the resolved configuration for one (os, label) build and
 // provides one method per stage.
@@ -71,13 +75,25 @@ func (r *Runner) builtDir() string { return filepath.Join(r.DataDir, "built") }
 
 // ---- root stages -----------------------------------------------------------
 
-// Refresh updates system packages and ensures dnf config-manager is available.
+// BaseBuildPackages are required for every build regardless of (os, version),
+// so they are installed unconditionally in Refresh rather than listed in each
+// config entry: wget (install-srpm uses it to fetch the src.rpm) and rpm-build
+// (provides the rpmbuild binary).
+var BaseBuildPackages = []string{"wget", "rpm-build"}
+
+// Refresh updates system packages, ensures dnf config-manager is available, and
+// installs the base build tooling that every build needs (see BaseBuildPackages).
+// It runs right after the initial yum update, so these installs always succeed.
 func (r *Runner) Refresh() error {
 	logx.Log("### refresh: ensuring system packages are up to date")
 	if err := run("yum", "update", "-y"); err != nil {
 		return err
 	}
-	return run("yum", "install", "-y", "dnf-command(config-manager)")
+	if err := run("yum", "install", "-y", "dnf-command(config-manager)"); err != nil {
+		return err
+	}
+	logx.Logf("### refresh: installing base build tooling %v", BaseBuildPackages)
+	return run("yum", append([]string{"install", "-y"}, BaseBuildPackages...)...)
 }
 
 // SetupRepos installs the EPEL packages and enables the configured repos.
@@ -108,39 +124,15 @@ func (r *Runner) SetupRepos() error {
 	return nil
 }
 
-// InstallPackages installs the build dependencies for this (os, version).
-//
-// The steps run in order:
-//  1. extra_packages — packages missing from the src.rpm's BuildRequires,
-//     installed first so they are present however the rest are resolved.
-//  2. auto_install_dependencies — if set, install yum-utils (which provides
-//     yum-builddep) and let yum-builddep resolve the src.rpm's BuildRequires.
-//  3. packages — the explicitly listed packages, installed afterwards.
+// InstallPackages installs the explicitly listed build packages for this
+// (os, version) as root, before the build. With auto_install_dependencies this
+// list only needs the tooling that is not a BuildRequires (e.g. wget to fetch
+// the src.rpm, rpm-build for rpmbuild); the spec's BuildRequires are resolved
+// separately by InstallBuildDeps, after install-srpm has laid down the spec.
 func (r *Runner) InstallPackages() error {
 	b := r.Cfg.Build
-	if !b.ShouldInstallDependencies() && len(b.Packages) == 0 && len(b.ExtraPackages) == 0 {
+	if !b.ShouldInstallDependencies() && len(b.Packages) == 0 {
 		return fmt.Errorf("nothing to install for %s / %s: set auto_install_dependencies or list packages", r.osLabel(), r.Cfg.Label)
-	}
-
-	if len(b.ExtraPackages) > 0 {
-		logx.Logf("### install-packages: installing %d extra package(s) missing from BuildRequires", len(b.ExtraPackages))
-		if err := run("yum", append([]string{"install", "-y"}, b.ExtraPackages...)...); err != nil {
-			return err
-		}
-	}
-
-	if b.ShouldInstallDependencies() {
-		logx.Log("### install-packages: resolving build dependencies with yum-builddep")
-		if err := run("yum", "install", "-y", "yum-utils"); err != nil { // provides yum-builddep
-			return err
-		}
-		// yum-builddep reads BuildRequires: from the .spec file.
-		// Depependencies are gated behind the custom el<N> macro
-		// this project passes to rpmbuild (e.g. libquadmath-devel on el10) are
-		// not in that header, so they must be listed in extra_packages.
-		if err := run("yum-builddep", "-y", r.srpmRef()); err != nil {
-			return err
-		}
 	}
 
 	if len(b.Packages) > 0 {
@@ -152,18 +144,43 @@ func (r *Runner) InstallPackages() error {
 	return nil
 }
 
-// srpmRef returns a reference to the source RPM for yum-builddep: the cached
-// local copy under SRPMS/ if it has already been downloaded, otherwise the
-// remote URL (yum-builddep can fetch it directly). InstallPackages runs before
-// the rpmbuild user's install-srpm stage, so on a first build the cache is
-// usually empty and the URL is used.
-func (r *Runner) srpmRef() string {
-	url := r.Cfg.Build.SRPM
-	cached := filepath.Join(r.srpmsDir(), filepath.Base(url))
-	if _, err := os.Stat(cached); err == nil {
-		return cached
+// InstallBuildDeps resolves the src.rpm's BuildRequires as root with
+// yum-builddep. It runs after install-srpm (as the build user) has extracted
+// the spec, and before rpmbuild.
+//
+// It targets the extracted .spec file rather than the .src.rpm because
+// yum-builddep evaluates a spec's conditional BuildRequires but only reads the
+// frozen header of a .src.rpm. This project's specs gate some BuildRequires
+// behind the el<N> macro (e.g. libquadmath-devel on el10); the OS predefines
+// that macro, so running against the spec resolves those deps automatically —
+// no --define is needed here. See docs/yum-builddep-define-srpm-bug.md. This
+// step is skipped unless auto_install_dependencies is set.
+func (r *Runner) InstallBuildDeps() error {
+	if !r.Cfg.Build.ShouldInstallDependencies() {
+		logx.Log("### install-builddeps: auto_install_dependencies not set, skipping")
+		return nil
 	}
-	return url
+	logx.Log("### install-builddeps: resolving build dependencies with yum-builddep")
+	if err := run("yum", "install", "-y", "yum-utils"); err != nil { // provides yum-builddep
+		return err
+	}
+	home, err := buildUserRpmbuildHome()
+	if err != nil {
+		return err
+	}
+	specs := filepath.Join(home, "SPECS")
+	return runIn(specs, "yum-builddep", "-y", SpecFile)
+}
+
+// buildUserRpmbuildHome returns the build user's ~/rpmbuild tree, resolved via
+// user lookup so it works when called as root (unlike rpmbuildHome, which uses
+// the current user's home).
+func buildUserRpmbuildHome() (string, error) {
+	u, err := lookupUser(BuildUser)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(u.HomeDir, "rpmbuild"), nil
 }
 
 // FixAnnobin works around the gcc-toolset annobin plugin naming mismatch.
@@ -345,7 +362,7 @@ func (r *Runner) RPMBuild() error {
 	}
 	specs := filepath.Join(home, "SPECS")
 	logx.Logf("### rpmbuild: started at %s", time.Now().UTC().Format(time.RFC3339))
-	buildErr := runIn(specs, "rpmbuild", "--define", r.rpmDefine(), "-ba", "mysql.spec")
+	buildErr := runIn(specs, "rpmbuild", "--define", r.rpmDefine(), "-ba", SpecFile)
 	logx.Logf("### rpmbuild: finished, error=%v", buildErr)
 
 	qa := filepath.Join(r.logDir(), "rpm-qa."+r.runLabel())
@@ -400,8 +417,18 @@ func (r *Runner) Collect() error {
 
 // ---- orchestration ---------------------------------------------------------
 
-// Setup runs all root stages and then re-execs the build stage as the rpmbuild
-// user. It mirrors ossetup_stage + the `su - rpmbuild` handoff.
+// Setup runs the root OS-prep stages and then drives the full build, crossing
+// the privilege boundary as the stages require:
+//
+//	root       refresh → setup-repos → install-packages → fix-annobin
+//	           → os-tweaks → create-user
+//	build user install-srpm            (fetch + extract the src.rpm's spec)
+//	root       install-builddeps       (yum-builddep --define against the spec)
+//	build user build-rpm               (apply-patches → rpmbuild → collect)
+//
+// builddep must run as root but needs the spec that install-srpm lays down as
+// the build user, so the build user work is split across two `su` hand-offs
+// with the root builddep step in between.
 func (r *Runner) Setup() error {
 	for _, stage := range []struct {
 		name string
@@ -419,24 +446,36 @@ func (r *Runner) Setup() error {
 		}
 	}
 
+	if err := r.suBuild("install-srpm"); err != nil {
+		return fmt.Errorf("install-srpm: %w", err)
+	}
+	if err := r.InstallBuildDeps(); err != nil {
+		return fmt.Errorf("install-builddeps: %w", err)
+	}
+	return r.suBuild("build-rpm")
+}
+
+// suBuild re-execs this binary as the (non-root) build user to run a single
+// build-user stage in its own login shell.
+func (r *Runner) suBuild(stage string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	logx.Logf("### switching to user %s to run the build stage", BuildUser)
-	cmd := exec.Command("su", "-", BuildUser, "-c", fmt.Sprintf("%s build %s", exe, r.Cfg.Label))
+	logx.Logf("### switching to user %s to run %s", BuildUser, stage)
+	cmd := exec.Command("su", "-", BuildUser, "-c", fmt.Sprintf("%s %s %s", exe, stage, r.Cfg.Label))
 	cmd.Stdout = logx.Writer()
 	cmd.Stderr = logx.Writer()
 	return cmd.Run()
 }
 
-// Build runs all rpmbuild-user stages, mirroring build_rpm_stage.
-func (r *Runner) Build() error {
+// BuildRPM runs the build-user stages after the src.rpm is installed and its
+// build deps resolved: apply-patches → rpmbuild → collect.
+func (r *Runner) BuildRPM() error {
 	for _, stage := range []struct {
 		name string
 		fn   func() error
 	}{
-		{"install-srpm", r.InstallSRPM},
 		{"apply-patches", r.ApplyPatches},
 		{"rpmbuild", r.RPMBuild},
 		{"collect", r.Collect},
