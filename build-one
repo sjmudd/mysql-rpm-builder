@@ -2,7 +2,7 @@
 #
 # Thin compatibility wrapper so the historical invocation still works:
 #
-#     ./build_one [-n] <os> <label>      e.g. ./build_one ol10 9.7.1
+#     ./build-one [-n] <os> <label>      e.g. ./build-one ol10 9.7.1
 #
 # It simply forwards to the mysql-rpm-builder binary's build-one subcommand.
 # Build the binary first with: go build -o mysql-rpm-builder ./go/cmd

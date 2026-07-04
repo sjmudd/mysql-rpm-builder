@@ -68,8 +68,8 @@ The binary is invoked by subcommand:
 Every step is individually runnable, which makes debugging a failed build
 much easier (see [Building in individual steps](#building-in-individual-steps)).
 
-A thin `build_one` shell wrapper is provided so the historical invocation
-still works: `./build_one ol10 9.7.1`.
+A thin `build-one` shell wrapper is provided so the historical invocation
+still works: `./build-one ol10 9.7.1`.
 
 ## Which versions do I rebuild?
 
@@ -145,7 +145,7 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
    the `srpm:` URL, an `auto_install_dependencies:` flag, and a `packages:`
    list (and/or `extra_packages:`) — usually copying the previous
    version's block is sufficient, but beware of compiler/other changes over time.
-3. Build it: `./build_one <os> <version>`.
+3. Build it: `./build-one <os> <version>`.
 
 ## Build Process
 
@@ -153,8 +153,8 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
 
 Typical usage:
 
-- `./build_one <os> <version>`
-- e.g. `./build_one ol10 9.7.1` or `./build_one rocky9 9.6.0`
+- `./build-one <os> <version>`
+- e.g. `./build-one ol10 9.7.1` or `./build-one rocky9 9.6.0`
 
 If you omit a parameter, the valid choices are listed.
 
@@ -175,7 +175,7 @@ Inside the container `run` executes as root: it prepares the OS
 `create-user`), then re-execs itself as the non-root `rpmbuild` user to run
 the build (`install-srpm` → `apply-patches` → `rpmbuild` → `collect`).
 
-Use `./build_one -n <os> <version>` for a dry run that prints the docker
+Use `./build-one -n <os> <version>` for a dry run that prints the docker
 command without executing it.
 
 #### Quickly testing a new (os, version) combination
@@ -185,9 +185,9 @@ or build deps, a failing cmake configure) show up long before that. These
 flags stop the container early so a new combination can be validated fast:
 
 ```
-./build_one -test ol10 9.7.1              # stop as soon as compiling starts (past cmake)
-./build_one -timeout 30m ol10 9.7.1       # stop after 30m regardless
-./build_one -until 'Building CXX object' ol10 9.7.1  # stop on a custom output marker
+./build-one -test ol10 9.7.1              # stop as soon as compiling starts (past cmake)
+./build-one -timeout 30m ol10 9.7.1       # stop after 30m regardless
+./build-one -until 'Building CXX object' ol10 9.7.1  # stop on a custom output marker
 ```
 
 `-test` is the common case: reaching the first compile line means OS prep,
@@ -246,8 +246,8 @@ Logs are written under `log/` (UTC timestamps). Because `log/`, `SRPMS/`
 and `built/` live in the mounted `$PWD` they persist even when the
 container is removed with `--rm`:
 
-- `log/build_one-<os>-<label>.log` — host-side launcher log
-- `log/build_one.build_status` — one line per build (status, rc, elapsed)
+- `log/build-one-<os>-<label>.log` — host-side launcher log
+- `log/build-one.build_status` — one line per build (status, rc, elapsed)
 - `log/ossetup__<label>.log`, `log/build__<label>.log` — in-container stages
 - `log/rpm-qa.<label>` (or `.failed`) — the installed package list at build
   time, useful for reproducing or reporting a build
@@ -302,7 +302,7 @@ Two kinds of change are supported:
   `Patch0:`/`%patch0` directive your spec patch added.
 
 Then add a `config.yaml` build entry keyed by `<label>` pointing at the
-base src.rpm, and build with `./build_one <os> <label>`. See
+base src.rpm, and build with `./build-one <os> <label>`. See
 `config/8.2.0.hyp/` for a complete example.
 
 ## Warning on differences between equivalent OS versions

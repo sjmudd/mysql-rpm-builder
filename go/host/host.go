@@ -68,7 +68,7 @@ func BuildOne(osName, label string, opts Options) int {
 		logx.Fatalf(2, "%v", err)
 	}
 
-	logFile := filepath.Join(dir, "log", fmt.Sprintf("build_one-%s-%s.log", osName, label))
+	logFile := filepath.Join(dir, "log", fmt.Sprintf("build-one-%s-%s.log", osName, label))
 	closer, err := logx.SetTee(logFile)
 	if err != nil {
 		logx.Fatalf(1, "cannot open logfile %s: %v", logFile, err)
@@ -225,12 +225,12 @@ func (w *lineWatcher) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// appendBuildStatus appends a one-line summary to log/build_one.build_status,
+// appendBuildStatus appends a one-line summary to log/build-one.build_status,
 // matching the format used by the original script.
 func appendBuildStatus(dir, osName, label, image, status string, rc, elapsed int) {
-	path := filepath.Join(dir, "log", "build_one.build_status")
+	path := filepath.Join(dir, "log", "build-one.build_status")
 	host, _ := os.Hostname()
-	line := fmt.Sprintf("%s %s build_one[%d] osname=%s, label=%s, image=%s, status=%s, rc=%d, elapsed=%d\n",
+	line := fmt.Sprintf("%s %s build-one[%d] osname=%s, label=%s, image=%s, status=%s, rc=%d, elapsed=%d\n",
 		time.Now().UTC().Format("2006-01-02T15:04:05"), host, os.Getpid(), osName, label, image, status, rc, elapsed)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
