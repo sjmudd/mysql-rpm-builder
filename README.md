@@ -1,5 +1,8 @@
 # MySQL rpm (re)builder
 
+note: As of commit 30776d5bffc7daa7d6a206ebde630d2f3771975b the build
+code was converted to golang from the previous shell script configuration.
+
 ## Overview
 
 ### Trigger repeatable MySQL rpm builds from a src rpm.
@@ -9,13 +12,13 @@ This repo has two main purposes:
   exact build requirements are defined.
   While rpm does have a `BuildRequires:` section intended to provide the
   list of build dependencies often this is far from precise and it is
-  often incomplte.  This can mean that if the your build environment is
+  often incomplete.  This can mean that if your build environment is
   setup differently to mine you can build binary packages but I can not,
-  something which is problematic.  This repo intended to make the OS
-  environment build process explict (e.g when building from a docker
+  something which is problematic.  This repo is intended to make the OS
+  environment build process explicit (e.g when building from a docker
   image) and also ensures the subsequent rpm-build run is explicit too.
 - build patched versions of the original src rpm with minimal changes.
-  along the same lines as the pervious step we can now build a patched
+  Along the same lines as the previous step we can now build a patched
   version of the upstream src.rpms by providing the required changes,
   usually a patch, and building using the same process as before.
 
@@ -23,354 +26,307 @@ This repo has two main purposes:
 environment is setup explicitly and then to build as a non-root user.
 
 I have found that the docs on performing a rebuild, at least as done
-by upstream vendors may be far from complete and this had made building
+by upstream vendors, may be far from complete and this has made building
 for a new OS or wanting to build the existing software with a specific
 patch much harder than expected.
 
-Given a known initial state, the bare OS from docker 2 stages (**prepare**)
-and (**rpm build**) are triggered by explicit scripts, and the whole
-process is completely defined and should be repeatable.
+Given a known initial state (the bare OS from docker), the build is
+driven entirely by declarative configuration and a single self-contained
+binary, so the whole process is completely defined and should be
+repeatable.
 
-A similar usage might happen when changing from one major OS version to
-another or if changing from one major software version to another: all
-changes becomes much more visible.
+Feel free to provide feedback at `sjmudd` at `pobox.com` or file an
+[issue](https://github.com/sjmudd/mysql-rpm-builder/issues/new) on
+github directly.
 
-This is clearly work in progress. If you have feedback to provide you
-can reach me at `sjmudd` at `pobox.com` or file an [issue](https://github.com/sjmudd/mysql-rpm-builder/issues/new)
-on github directly.
+## A single Go binary
+
+The tooling is a single statically-linked Go binary, `mysql-rpm-builder`.
+The same binary runs on the host (to launch a Docker container) and inside
+the container (to prepare the OS and build the rpms) — the repository
+directory is mounted at `/data` and the binary re-executes itself in the
+right role.
+
+Build it with `make` (which also formats, vets and lints), or `go build`
+directly:
+
+```
+make                              # fmt, vet, lint, then build
+go build -o mysql-rpm-builder ./go/cmd   # or just build
+```
+
+The binary is invoked by subcommand:
+
+| Command | Where | Purpose |
+|---|---|---|
+| `build-one [-n] <os> <label>` | host | launch a Docker container and build `<label>` on `<os>` |
+| `run <label>` | container | full build (OS prep + rpmbuild); invoked by `build-one` |
+| `setup <label>` | container (root) | run all OS-prep stages, then hand off to the build stage |
+| `build <label>` | container (rpmbuild) | run all rpmbuild-user stages |
+| `refresh` / `setup-repos` / `install-packages` / `os-tweaks` / `create-user` `<label>` | container (root) | individual OS-prep steps |
+| `install-srpm` / `apply-patches` / `rpmbuild` / `collect` `<label>` | container (rpmbuild) | individual build steps |
+
+Every step is individually runnable, which makes debugging a failed build
+much easier (see [Building in individual steps](#building-in-individual-steps)).
+
+A thin `build_one` shell wrapper is provided so the historical invocation
+still works: `./build_one ol10 9.7.1`.
 
 ## Which versions do I rebuild?
 
-Current code (08/2025) can rebuild the following MySQL versions, all of which are considered GA.
-- 8.0
-- 8.4
-- 9.X (currently 9.4.0)
+The `config.yaml` build matrix currently covers the modern el9/el10
+combinations of MySQL 8.4.x and 9.x across Oracle Linux, Rocky Linux,
+AlmaLinux and CentOS Stream. Older el7/el8 combinations can be added the
+same way (see [Configuration](#configuration)).
 
-## Directory Layout
+## Configuration
 
-- `build`             intended to build a single rpm, used from within docker
-- `build_one`         intended to build a single rpm, used from outside docker
-- `build_all`         intended to build all rpms, used from outside docker. Takes no parameters.
-- `build.conf`        configuration file for `build` indicating which scripts
-                      should be used for preparing the OS or building MySQL.
-- `built/`            directory containing built rpms.
-- `config/`           build configuration directory.
-- `config/<VERSION>`  an optional directory of `SOURCES/` or `SPECS/` override
-                      files when building the rpm. These files will be placed
-                      in the appropriate directory after instaling the given
-                      `.src.rpm` file, allowing build configuration to be
-                      modified fromt he original src.rpm files.
-- `SRPMS/`            cached or non-cached `SRPMS` files. If configured the
-                      `SRPMS` may be downloaded here from an external site once
-                      and reused later.
-- `log/`              log files of completed or failed builds.
+Configuration is declarative YAML, layered **OS → MySQL version**:
+
+- **`images.yaml`** — one entry per OS (flavour + major version): the
+  container image and the repository setup. Repo setup is stable per OS
+  major version so it lives here once, not per MySQL version.
+
+  ```yaml
+  oses:
+    ol10:
+      image: oraclelinux:10
+      repos:
+        enable: [ol10_codeready_builder, ol10_u1_developer_EPEL]  # yum config-manager --set-enabled
+        epel_packages: [oracle-epel-release-el10]                 # dnf install -y
+  ```
+
+- **`config.yaml`** — the build matrix, a chronological sequence of builds
+  per OS. Each `(os, version)` entry is fully explicit: its own source RPM
+  URL, package list, and optional shell `tweaks`. There is deliberately no
+  inheritance — to add a new release, copy the newest block for that OS and
+  bump the version key + srpm URL.
+
+  ```yaml
+  oses:
+    ol10:
+      builds:
+        9.7.0:
+          srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.0-1.el10.src.rpm
+          packages: [cmake, gcc, gcc-c++, ...]
+        9.7.1:                 # copy of 9.7.0, version + srpm bumped
+          srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el10.src.rpm
+          packages: [cmake, gcc, gcc-c++, ...]
+  ```
+
+The package list is recorded per `(os, version)` because MySQL build
+dependencies (compilers/toolsets) change between MySQL releases and differ
+slightly per OS flavour.
+
+### Adding a build
+
+1. Ensure the OS exists in `images.yaml` (image + repos).
+2. Add a `<version>:` block under `oses.<os>.builds` in `config.yaml` with
+   the `srpm:` URL and `packages:` list — usually by copying the previous
+   version's block.
+3. Build it: `./build_one <os> <version>`.
 
 ## Build Process
 
 ### Simple way
 
-Typical usage would be:
+Typical usage:
 
-- `build_one <os> <verson>`
-- e.g. `build_one centos8 8.0.36` or `./build_one ol9 9.4.0`
+- `./build_one <os> <version>`
+- e.g. `./build_one ol10 9.7.1` or `./build_one rocky9 9.6.0`
 
-If you don't provide either parameter you'll be prompted for valid values.
-
-### CentOS 7, 8 EOL
-
-Given the recent EOL of CentOS 7 / 8 the rebuilds have stopped working.
-This is because they depend on mirrorlist.centos.org to find the repos
-and this location no longer exists.  So rebuilding no longer seems to
-work. I guess I could look to see if there's an alternative location to
-get the latest copy of the mirror contents but for now I have commented
-out these build options.
-
-Note that OL8 and Rocky 8 builds still work fine so maybe if you need
-to rebuild MySQL rpms on an old CentOS 8 you can build using OL8/rocky8
-docker images as the build environment instead.  They should behave
-the same.
-
-I have not double checked the "7" versions but would expect this may
-work too.
+If you omit a parameter, the valid choices are listed.
 
 ### What's under the hood?
 
-`build_one` basically calls docker with the required parameters as shown:
+`build-one` resolves the container image from `images.yaml` and runs the
+binary inside Docker, roughly equivalent to:
 
 ```
-$ docker run --rm -it \
-        --network=host \
-        --hostname=buildhost \
-        -v $PWD:/data quay.io/centos/centos:stream8 \
-        /data/build -a 8.0.33
+docker run --rm --network=host --hostname=buildhost \
+    -v $PWD:/data -w /data \
+    oraclelinux:10 \
+    /data/mysql-rpm-builder run 9.7.1
 ```
 
-Other examples might be:
-```
-$ docker run --rm -it --network=host --hostname=mysql-builder -v $PWD:/data oraclelinux:9 /data/build -a 8.0.36
-```
+Inside the container `run` executes as root: it prepares the OS
+(`refresh` → `setup-repos` → `install-packages` → `os-tweaks` →
+`create-user`), then re-execs itself as the non-root `rpmbuild` user to run
+the build (`install-srpm` → `apply-patches` → `rpmbuild` → `collect`).
 
-However, if the process fails you won't have access to the state of the build
-at the moment it fails. If you need to verify what breaks go through the
-3 below steps individually.
+Use `./build_one -n <os> <version>` for a dry run that prints the docker
+command without executing it.
 
-Build failures are typically due to failure to ensure the required
-repos are configured, allowing all the rpms to be found and installed.
-This is troublesome as the rpm spec file does not say WHERE the rpms
-come from. In the old days you'd expect the required rpms to be in the
-base OS repos, but for MySQL builds we are using newer compilers than
-the default system `gcc` and so the toolset and required rpms will be
-in one of several external repos that need configuring.  It turns out
-that repo naming and setup is different for each flavour of the OS. So
-if you see a build failure such as:
+#### Quickly testing a new (os, version) combination
+
+A full `rpmbuild` takes hours, but most per-flavour problems (missing repos
+or build deps, a failing cmake configure) show up long before that. These
+flags stop the container early so a new combination can be validated fast:
 
 ```
-...
-Installed:
-  dbus-libs-1:1.12.20-8.el9.x86_64
-  dnf-plugins-core-4.3.0-13.el9.noarch
-  python3-dateutil-1:2.8.1-7.el9.noarch
-  python3-dbus-1.2.18-2.el9.x86_64
-  python3-dnf-plugins-core-4.3.0-13.el9.noarch
-  python3-six-1.15.0-9.el9.noarch
-  python3-systemd-234-18.el9.x86_64
-  systemd-libs-252-32.el9.x86_64
+./build_one -test ol10 9.7.1              # stop as soon as compiling starts (past cmake)
+./build_one -timeout 30m ol10 9.7.1       # stop after 30m regardless
+./build_one -until 'Building CXX object' ol10 9.7.1  # stop on a custom output marker
+```
 
-Complete!
-### Enabling extra repo:
-### installing required rpms
-Last metadata expiration check: 0:00:24 ago on Wed Apr  3 05:32:32 2024.
+`-test` is the common case: reaching the first compile line means OS prep,
+build-dependency resolution and cmake all succeeded. A build stopped this
+way is reported as `STOPPED` with `rc 0` (not `FAILED`). Flags must come
+before the `<os> <version>` positional arguments.
+
+Build failures are typically due to a repo not being enabled so that some
+build rpms cannot be found. Repo naming and setup differ per OS flavour;
+this is what `images.yaml` `repos:` captures. If you see something like:
+
+```
 No match for argument: libfido2-devel
-No match for argument: libtirpc-devel
 Error: Unable to find a match: libfido2-devel libtirpc-devel
 ```
 
-this is most likely the cause and a bit of investigation is required to
-find the rpms and setup the required repo accordingly.
+then the required repo is probably not enabled — adjust the `repos:` block
+for that OS in `images.yaml`.
 
 ### Building in individual steps
 
-Alternatively it can be done in 3 steps as indicated below
-
-#### Create docker container:
+Because a full rebuild can take hours, it is often easier to debug by
+running one step at a time in a throwaway container. Start a shell:
 
 ```
-$ docker run --rm -it \
-        --network=host \
-        --hostname=rpm-builder \
-        -v $PWD:/data \
-        quay.io/centos/centos:stream8 \
-	bash
+$ ./start-docker-container.sh oraclelinux:10
 ```
+
 or
-```
-$ ./start-docker-container.sh [<image_to_use>]
-```
-
-Current images are:
-- AlmaLinux 8: almalinux:8
-- AlmaLinux 9: almalinux:9
-- CentOS 7: quay.io/centos:7
-- CentOS 8 stream: quay.io/centos/centos:stream8
-- CentOS 9 stream: quay.io/centos/centos:stream9
-- OL 8: oraclelinux:8
-- OL 9: oraclelinux:9 (default image)
-- OL 10: oraclelinux:10 (WIP)
-- Rocky Linux 8: rocky:8
-- Rocky Linux 9: rocky:9
-
-#### Within docker container, as root run:
 
 ```
-# sh /data/build 8.0.33 # setup os as required for this version
-# su - rpmbuild         # change to rpmbuild build user
+$ docker run --rm -it --network=host -v $PWD:/data -w /data oraclelinux:10 bash
 ```
 
-#### Without exiting the shell perform the build
+Then, as root, run the OS-prep steps:
 
 ```
-# build 8.0.33 rpm from src.rpm configured in $SRPMS in the build script
-# configured in /data/config/build.conf or cached copy in /data/SRPMS if
-# present.
-$ sh /data/build 8.0.33
+# /data/mysql-rpm-builder refresh 9.7.1
+# /data/mysql-rpm-builder setup-repos 9.7.1
+# /data/mysql-rpm-builder install-packages 9.7.1
+# /data/mysql-rpm-builder create-user 9.7.1
 ```
+
+and, as the `rpmbuild` user (`su - rpmbuild`), the build steps:
+
+```
+$ /data/mysql-rpm-builder install-srpm 9.7.1
+$ /data/mysql-rpm-builder apply-patches 9.7.1
+$ /data/mysql-rpm-builder rpmbuild 9.7.1
+$ /data/mysql-rpm-builder collect 9.7.1
+```
+
+Any step that fails can be re-run in place without repeating the expensive
+`rpmbuild` step.
 
 ### Output and Logging
 
-If successful the final binary rpms should be found in
-`/data/built/` under the OS / MySQL configuration name that had been
-configured.
+On success the binary rpms are moved to `built/<os><major>__<version>/`
+(e.g. `built/ol10__9.7.1/`), together with the container's `/etc/os-release`.
 
-The build process will save logs in the `/data/log` directory, based on
-the mysql version configuration specified and the OS found. Logging is
-in UTC. The `/data/log` directory is actually kept as it's located within
-the `$PWD` you build from. This allows for inspection of the build logs even
-if you run the build completely from docker with `--rm` to remove the
-created run image after completion of the build.
+Logs are written under `log/` (UTC timestamps). Because `log/`, `SRPMS/`
+and `built/` live in the mounted `$PWD` they persist even when the
+container is removed with `--rm`:
 
-If successful the list of installed rpms required to perform the build
-is also recorded as this may change over time or if the build fails it is
-useful to share with others in case the installed rpms are not correct.
+- `log/build_one-<os>-<label>.log` — host-side launcher log
+- `log/build_one.build_status` — one line per build (status, rc, elapsed)
+- `log/ossetup__<label>.log`, `log/build__<label>.log` — in-container stages
+- `log/rpm-qa.<label>` (or `.failed`) — the installed package list at build
+  time, useful for reproducing or reporting a build
 
 ## A note on OS labels
 
-The labels are NOT random.  They come from `/etc/os-release`:
+The labels are NOT random. They come from `/etc/os-release`, using the
+`ID` and the major part of `VERSION_ID`:
 
-and the 2 values:
 ```
 ID="rocky"
 VERSION_ID="9.3"
 ```
 
-With the first major version number being used.
-
-e.g. this resolves to `rocky9`.
+resolves to `rocky9`. These labels are the keys used in `images.yaml` and
+`config.yaml`.
 
 ## Patching
 
-If you want to patch any of the SRPMS this can be done by doing the
-following:
-- create a new version directory under `/data/config` for the special build
-- update `/data/config/build.conf` to refer to that version and the required
-  prepare or build scripts if they need to change.
-- add any required files to be placed in the `~/rpmbuild/SOURCES` or
-  `~/rpmbuild/SPECS` directories under `/data/config/<version>/SOURCES` or
-  `/data/config/<version>/SPECS` directories as these will automatically
-  be added after installing the `src.rpm`.
+To build a patched version, create a directory `config/<label>/` (where
+`<label>` matches the build key in `config.yaml`) containing `SPECS/`
+and/or `SOURCES/`. After the src.rpm is installed, the `apply-patches`
+step copies these into `~/rpmbuild/SPECS` and `~/rpmbuild/SOURCES`, then
+applies any file matching `*patch*` in `SPECS/` to the spec file with
+`patch -p0` (in sorted order).
 
-In practice you may want or need to patch the mysql.spec file so you'd have a file
-like /data/config/<version>/SPECS/mysql.spec.patch with the appropriate
-patch against files in the directory so the beginning of the diff might look like
+Two kinds of change are supported:
 
-```
---- mysql.spec.orig     2023-11-02 21:20:49.863472158 +0100
-+++ mysql.spec  2023-11-02 21:29:35.143983290 +0100
-... patch goes here ...
-```
+- **Patch the spec file** — put a `SPECS/mysql.spec.patch`. It is applied
+  directly to `~/rpmbuild/SPECS/mysql.spec`, e.g. to change the release
+  string or add a `Patch0:` / `%patch0` directive:
 
-With patches against the source tree the patch would be located here:
+  ```
+  --- mysql.spec.orig     2023-11-02 21:20:49 +0100
+  +++ mysql.spec          2023-11-02 21:29:35 +0100
+  @@ -150,7 +150,7 @@
+   Version:        8.2.0
+  -Release:        1%{?commercial:.1}%{?dist}
+  +Release:        1%{?commercial:.1}%{?dist}.hypergraph
+  @@ -162,6 +162,7 @@
+   Source91:       filter-requires.sh
+  +Patch0:         000.hypergraph_optimizer_enable.diff
+  @@ -792,6 +793,8 @@
+   %endif # 0%{?compatlib}
+  +# 000 Enable hypergraph optimizer
+  +%patch0 -p1
+  ```
 
-`config/<version>/SOURCES/patch_name.diff`
+- **Patch the source tree** — put the patch under `SOURCES/` (e.g.
+  `SOURCES/000.hypergraph_optimizer_enable.diff`). It is copied into
+  `~/rpmbuild/SOURCES` and applied by rpmbuild during `%prep` via the
+  `Patch0:`/`%patch0` directive your spec patch added.
 
-and the patch contents will look something like:
+Then add a `config.yaml` build entry keyed by `<label>` pointing at the
+base src.rpm, and build with `./build_one <os> <label>`. See
+`config/8.2.0.hyp/` for a complete example.
 
-```
-diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 5f4cc06f30c..31d63ba40f6 100644
---- a/mysql-8.2.0/CMakeLists.txt
-+++ b/mysql-8.2.0/CMakeLists.txt
-... patch goes here ...
+## Warning on differences between equivalent OS versions
 
-```
-
-with the change in the mysql.spec file being something like:
-
-```
---- mysql.spec.orig     2023-11-02 21:20:49.863472158 +0100
-+++ mysql.spec  2023-11-02 21:29:35.143983290 +0100
-@@ -150,7 +150,7 @@
- Summary:        A very fast and reliable SQL database server
- Group:          Applications/Databases
- Version:        8.2.0
--Release:        1%{?commercial:.1}%{?dist}
-+Release:        1%{?commercial:.1}%{?dist}.hypergraph
- License:        Copyright (c) 2000, 2023, %{mysql_vendor}. Under %{?license_type} license as shown in the Description field.
- Source0:        https://cdn.mysql.com/Downloads/MySQL-8.2/%{src_dir}.tar.gz
- URL:            http://www.mysql.com/
-@@ -162,6 +162,7 @@
- Source10:       https://boostorg.jfrog.io/artifactory/main/release/1.77.0/source/boost_1_77_0.tar.bz2
- Source90:       filter-provides.sh
- Source91:       filter-requires.sh
-+Patch0:         000.hypergraph_optimizer_enable.diff
- %if 0%{?rhel} >= 8
- BuildRequires:  cmake >= 3.6.1
- BuildRequires:  libtirpc-devel
-@@ -792,6 +793,8 @@
- %else
- %setup -q -T -a 0 -a 10 -c -n %{src_dir}
- %endif # 0%{?compatlib}
-+# 000 Enable hypergraph optimizer
-+%patch0 -p1
-
- %build
- # Fail quickly and obviously if user tries to build as root
-```
-
-## Warning on differences between different equivalent OS versions.
-
-I tended to use [CentOS](centos.org) as the Linux flavour of
-interest. This is the unlicensed, fully GPL version of [RedHat Enterprise Linux](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux).
-There are other similar flavours which were released after the unexpected
-termination of CentOS 8 and its replacement with CentOS 8 Stream.
-The intention of all these repos is to be equivalent, but in fact there
-are some differences and what may work on one OS may not work on the
-others at least without some minimal changes.
-
-I have seen some differences between OL8 and CentOS 8 Stream with the
-names of additional repos used and it looks like CentOS 9 may have
-other differences with its _brothers_.  Most of this is easy to fix,
-but none of it is explicit, requiring you to make unexpected changes
-prior to being able to rebuild MySQL rpms.
-
-More recently since CentOS 7 and CentOS 8 have gone EOL I have moved
-to use Oracle Linux 9 and am currently updating code to work with
-the recently released Oracle Linux 10.
+The RHEL-compatible distributions (Oracle Linux, Rocky Linux, AlmaLinux,
+CentOS Stream) intend to be equivalent, but in practice there are
+differences — most notably in the names and setup of the additional repos
+that provide the newer compiler toolsets MySQL needs. What works on one may
+need a small change on another. This is why each OS is its own entry in
+`images.yaml` and its own test target: a build that works on `ol10` should
+also be verified on `rocky10`, `almalinux10`, etc.
 
 ## Build times
 
-I was somewhat suprised at how long it takes to rebuild the rpms.
-I normally do this very rarely.  I have also done this from the git
-source tree provided by Oracle.
-
-The rpm rebuild times seem to be quite a long longer than a single
-normal build. This is because the rpm build process builds the normal
-and debug rpms, the latter containing debug symbol information.
-
-On a home system I have (Beelink SER 4700u) this takes about 2h
-45m using a NAS vs 1h 20m using local nvme storage.  The C/C++ build
-process reads and writes a lot to the filesystem so storage latency can
-be signifcant.
+Rebuilding the rpms takes surprisingly long, because the rpm build produces
+both the normal and the debug rpms (the latter containing debug symbols).
+On a home system (Beelink SER 4700u) this is about 2h45m using a NAS vs
+1h20m using local nvme storage — the C/C++ build reads and writes a lot, so
+storage latency matters.
 
 ## rpm build user
 
-The rpm build user `rpmbuild` created inside the docker container
-is configured to have the first uid/gid that's free. In practice
-on RH systems that's using uid/gid 1000.  There's an assumption
-that the volume imported via docker also uses the same user id.  If
-it doesn't things may most likely fail. I should probably modify
-the docker entry scripts to indicate the correct uid/gid to create
-for this build user for things to work more transparently but have
-not done that yet.
+The `rpmbuild` user created inside the container gets the first free
+uid/gid, which on RH systems is 1000. There is an assumption that the
+volume mounted via docker uses the same uid/gid; if it does not, things may
+fail.
 
-## OS Setup scripts
+## Related thoughts
 
-Originally the ossetup scripts were sourced and pulled into the main
-`build` script.  This has been modified so these setup scripts can
-be standalone scripts. This makes it easier to use them outside of
-the mysql-rpm-builder tooling.  Newer scripts will be executable
-and will be executed directly from `build` rather than being source
-and then the `prepare` function called.  There should be no functional
-difference between these behaviours. The same change is likely to
-be done for the rpmbuild setup as this then makes reporting any
-"I can not build version a.b.c" reports to upstream easier as they
-should be able to reproduce the process by running a minimal number
-of scripts from a base docker image.
+None of what is done here is specific to MySQL, so this approach could be
+used for building other packages following the same philosophy.
 
-## Related thoughts.
+Others may ask why I build from the src.rpm files and not directly from the
+git repo. That might be an interesting addition to the tooling — the same
+lack of explicit documentation applies to building from the git tree.
+[Here](https://github.com/sjmudd/bacula-rpm-builder/) is an example of
+building from a git tree.
 
-None of what is done here is specific to MySQL so these scripts could
-be used for building other packages following the same philosophy.
-
-Others may ask why I build from the src.rpm files and not directly from
-the git repo (in the case of MySQL). That might be an interesting addition
-to the tooling as in the same way that explicit documentation on the build
-process from src.rpms to binary rpms is often missing the same explict
-instructions for triggering repeatable rpm builds from the git tree may
-be applicable. [Here](https://github.com/sjmudd/bacula-rpm-builder/) is
-an example of that.   As the git trees of many packages are the ultimate
-source using those is clearly better.
-
-## Some Reported RPM rebuild failures and related bugs
+## Some reported RPM rebuild failures and related bugs
 
 - [Bug#118796: RPM spec files are missing some buildrequires](https://bugs.mysql.com/118796)
 - [Bug#115484: Missing BuildRequires for gcc-toolset-12 in mysql.spec.in for 9.0.0+](https://bugs.mysql.com/115484)

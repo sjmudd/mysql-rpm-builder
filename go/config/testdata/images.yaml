@@ -1,0 +1,17 @@
+# Minimal synthetic images.yaml for config package tests.
+oses:
+  ol10:
+    image: oraclelinux:10
+    repos:
+      enable: [ol10_codeready_builder]
+      epel_packages: [oracle-epel-release-el10]
+  rocky9:
+    image: rockylinux:9
+    repos:
+      enable: [crb]
+      epel_packages: [epel-release]
+  # defined here but has no builds in config.yaml, to exercise that error path
+  almalinux10:
+    image: almalinux:10
+    repos:
+      enable: [crb]

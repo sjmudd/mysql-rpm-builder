@@ -1,0 +1,17 @@
+version: "2"
+
+# Lint configuration for mysql-rpm-builder.
+# Run with: golangci-lint run ./...
+linters:
+  enable:
+    - errcheck      # unchecked errors
+    - govet         # suspicious constructs
+    - ineffassign   # ineffectual assignments
+    - staticcheck   # static analysis
+    - unused        # unused code
+    - misspell      # common misspellings
+    - revive        # style/lint rules
+
+formatters:
+  enable:
+    - gofmt

@@ -1,4 +1,0 @@
-extra_repo=ol10_codeready_builder
-epel_repo=oracle-epel-release-el10
-#config_manager_enable=ol10_developer_EPEL
-config_manager_enable=ol10_u1_developer_EPEL

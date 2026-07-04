@@ -1,1 +1,0 @@
-ol10__9.6.0__2.setuprepos.sh

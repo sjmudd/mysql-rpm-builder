@@ -1,0 +1,15 @@
+# Minimal synthetic config.yaml for config package tests.
+oses:
+  ol10:
+    builds:
+      9.7.1:
+        srpm: https://example.invalid/mysql-9.7.1.src.rpm
+        packages: [cmake, gcc, gcc-c++]
+      9.7.0:
+        srpm: https://example.invalid/mysql-9.7.0.src.rpm
+        packages: [cmake, gcc]
+  rocky9:
+    builds:
+      # deliberately has no srpm to exercise the "no srpm URL" error path
+      broken:
+        packages: [cmake]

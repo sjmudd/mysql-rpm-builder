@@ -1,0 +1,59 @@
+# OS definitions for the MySQL rpm builder.
+#
+# Each OS (flavour + major version) maps to a container image and its repo
+# setup. Repo setup is stable per OS major version, so it lives here once rather
+# than being repeated per MySQL version in config.yaml.
+#
+#   repos.enable        -> yum config-manager --set-enabled <name>
+#   repos.epel_packages -> dnf install -y <package>
+#
+oses:
+  almalinux8:
+    image: almalinux:8
+  almalinux9:
+    image: almalinux:9
+    repos:
+      enable: [crb]
+      epel_packages: [epel-release]
+  almalinux10:
+    image: almalinux:10
+    repos:
+      enable: [crb]
+      epel_packages: [epel-release]
+
+  rocky8:
+    image: rockylinux:8
+  rocky9:
+    image: rockylinux:9
+    repos:
+      enable: [crb]
+      epel_packages: [epel-release]
+  rocky10:
+    image: rockylinux/rockylinux:10
+    repos:
+      enable: [crb]
+      epel_packages: [epel-release]
+
+  centos8:
+    image: quay.io/centos/centos:stream8
+  centos9:
+    image: quay.io/centos/centos:stream9
+    repos:
+      enable: [crb]
+      epel_packages: [epel-release]
+
+  ol8:
+    image: oraclelinux:8
+    repos:
+      enable: [ol8_codeready_builder]
+      epel_packages: [oracle-epel-release-el8]
+  ol9:
+    image: oraclelinux:9
+    repos:
+      enable: [ol9_codeready_builder, ol9_developer_EPEL]
+      epel_packages: [oracle-epel-release-el9]
+  ol10:
+    image: oraclelinux:10
+    repos:
+      enable: [ol10_codeready_builder, ol10_u1_developer_EPEL]
+      epel_packages: [oracle-epel-release-el10]
