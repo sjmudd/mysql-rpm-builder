@@ -213,12 +213,6 @@ Because a full rebuild can take hours, it is often easier to debug by
 running one step at a time in a throwaway container. Start a shell:
 
 ```
-$ ./start-docker-container.sh oraclelinux:10
-```
-
-or
-
-```
 $ docker run --rm -it --network=host -v $PWD:/data -w /data oraclelinux:10 bash
 ```
 
