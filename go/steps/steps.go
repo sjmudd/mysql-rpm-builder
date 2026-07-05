@@ -25,12 +25,8 @@ import (
 // BuildUser is the non-root user that runs the rpmbuild stage.
 const BuildUser = "rpmbuild"
 
-const (
-	// DataDir is where the repository is mounted inside the container.
-	DataDir = "/data"
-	// SpecFile is the name of the RPM spec, consistent across MySQL versions.
-	SpecFile = "mysql.spec"
-)
+// DataDir is where the repository is mounted inside the container.
+const DataDir = "/data"
 
 // Runner carries the resolved configuration for one (os, label) build and
 // provides one method per stage.
@@ -38,6 +34,16 @@ type Runner struct {
 	Cfg     config.Resolved
 	OS      osrelease.Info
 	DataDir string
+	// Code is the per-run random code (from the RUN_CODE environment variable),
+	// shared with the host build-one log and the container name. It is included
+	// in per-run log/rpm-qa filenames; when empty (e.g. an individual step run by
+	// hand in a debug container) those filenames omit it.
+	Code string
+	// Date is the per-run timestamp (from RUN_DATETIME, else the current time),
+	// included in every per-run log/rpm-qa filename so a run's files sort and
+	// group together. Threading it from the host keeps every stage's filename on
+	// the same value.
+	Date string
 }
 
 // NewRunner detects the current OS, loads the configuration from dataDir and
@@ -55,7 +61,18 @@ func NewRunner(dataDir, label string) (*Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Runner{Cfg: resolved, OS: info, DataDir: dataDir}, nil
+	return &Runner{Cfg: resolved, OS: info, DataDir: dataDir, Code: os.Getenv("RUN_CODE"), Date: runDateTime()}, nil
+}
+
+// runDateTime returns the per-run timestamp: the value threaded in via
+// RUN_DATETIME (set by the host build-one command so every stage shares one
+// timestamp), or the current time when it is absent (e.g. an individual step
+// run by hand).
+func runDateTime() string {
+	if d := os.Getenv("RUN_DATETIME"); d != "" {
+		return d
+	}
+	return time.Now().UTC().Format("20060102.150405")
 }
 
 // osLabel is the "<id><major>" key, e.g. "ol10".
@@ -77,9 +94,19 @@ func (r *Runner) builtDir() string { return filepath.Join(r.DataDir, "built") }
 
 // BaseBuildPackages are required for every build regardless of (os, version),
 // so they are installed unconditionally in Refresh rather than listed in each
-// config entry: wget (install-srpm uses it to fetch the src.rpm) and rpm-build
-// (provides the rpmbuild binary).
-var BaseBuildPackages = []string{"wget", "rpm-build"}
+// config entry. util-linux provides 'su'.
+var BaseBuildPackages = []string{"rpm-build", "util-linux", "wget"}
+
+// RecordInitialPackages captures the base container image's package list before
+// any packages are changed, writing a sorted listing to rpm-qa.init.<runLabel>.
+// It must run before Refresh (which does the first `yum update`), so the file
+// reflects the untouched image — allowing base images to be compared over time
+// for one OS and between OS flavours (e.g. ol10 vs rocky10).
+func (r *Runner) RecordInitialPackages() error {
+	path := r.rpmQAPath("init")
+	logx.Logf("### record-init: capturing base image package list to %s", path)
+	return captureRPMQA(path)
+}
 
 // Refresh updates system packages, ensures dnf config-manager is available, and
 // installs the base build tooling that every build needs (see BaseBuildPackages).
@@ -169,7 +196,11 @@ func (r *Runner) InstallBuildDeps() error {
 		return err
 	}
 	specs := filepath.Join(home, "SPECS")
-	return runIn(specs, "yum-builddep", "-y", SpecFile)
+	spec, err := specFileIn(specs)
+	if err != nil {
+		return err
+	}
+	return runIn(specs, "yum-builddep", "-y", spec)
 }
 
 // buildUserRpmbuildHome returns the build user's ~/rpmbuild tree, resolved via
@@ -361,11 +392,15 @@ func (r *Runner) RPMBuild() error {
 		return err
 	}
 	specs := filepath.Join(home, "SPECS")
+	spec, err := specFileIn(specs)
+	if err != nil {
+		return err
+	}
 	logx.Logf("### rpmbuild: started at %s", time.Now().UTC().Format(time.RFC3339))
-	buildErr := runIn(specs, "rpmbuild", "--define", r.rpmDefine(), "-ba", SpecFile)
+	buildErr := runIn(specs, "rpmbuild", "--define", r.rpmDefine(), "-ba", spec)
 	logx.Logf("### rpmbuild: finished, error=%v", buildErr)
 
-	qa := filepath.Join(r.logDir(), "rpm-qa."+r.runLabel())
+	qa := r.rpmQAPath("post")
 	if buildErr != nil {
 		qa += ".failed"
 	}
@@ -420,8 +455,8 @@ func (r *Runner) Collect() error {
 // Setup runs the root OS-prep stages and then drives the full build, crossing
 // the privilege boundary as the stages require:
 //
-//	root       refresh → setup-repos → install-packages → fix-annobin
-//	           → os-tweaks → create-user
+//	root       record-init → refresh → setup-repos → install-packages
+//	           → fix-annobin → os-tweaks → create-user
 //	build user install-srpm            (fetch + extract the src.rpm's spec)
 //	root       install-builddeps       (yum-builddep --define against the spec)
 //	build user build-rpm               (apply-patches → rpmbuild → collect)
@@ -434,6 +469,7 @@ func (r *Runner) Setup() error {
 		name string
 		fn   func() error
 	}{
+		{"record-init", r.RecordInitialPackages},
 		{"refresh", r.Refresh},
 		{"setup-repos", r.SetupRepos},
 		{"install-packages", r.InstallPackages},
@@ -463,7 +499,17 @@ func (r *Runner) suBuild(stage string) error {
 		return err
 	}
 	logx.Logf("### switching to user %s to run %s", BuildUser, stage)
-	cmd := exec.Command("su", "-", BuildUser, "-c", fmt.Sprintf("%s %s %s", exe, stage, r.Cfg.Label))
+	// `su -` starts a login shell that resets the environment, so re-inject the
+	// per-run code and timestamp as inline assignments on the command it runs,
+	// keeping every stage's filenames tied to the same code and date.
+	cmdStr := fmt.Sprintf("%s %s %s", exe, stage, r.Cfg.Label)
+	if r.Date != "" {
+		cmdStr = "RUN_DATETIME=" + r.Date + " " + cmdStr
+	}
+	if r.Code != "" {
+		cmdStr = "RUN_CODE=" + r.Code + " " + cmdStr
+	}
+	cmd := exec.Command("su", "-", BuildUser, "-c", cmdStr)
 	cmd.Stdout = logx.Writer()
 	cmd.Stderr = logx.Writer()
 	return cmd.Run()
@@ -487,12 +533,29 @@ func (r *Runner) BuildRPM() error {
 	return nil
 }
 
-// runLabel builds the timestamped label used for per-run log/rpm-qa filenames.
+// runLabel builds the run identifier used for per-run log/rpm-qa filenames:
+// "<os>__<label>", with the per-run code appended as "__<code>" when available
+// (see Runner.Code), then the per-run timestamp as "__<datetime>".
 func (r *Runner) runLabel() string {
-	return fmt.Sprintf("%s__%s__%s", r.Cfg.Label, r.osLabel(), time.Now().UTC().Format("20060102.150405"))
+	base := fmt.Sprintf("%s__%s", r.osLabel(), r.Cfg.Label)
+	if r.Code != "" {
+		base += "__" + r.Code
+	}
+	if r.Date != "" {
+		base += "__" + r.Date
+	}
+	return base
 }
 
-// LogFileFor returns the tee logfile path for an orchestration stage.
+// LogFileFor returns the tee logfile path for an orchestration stage, named
+// "<kind>.<runLabel>.log".
 func (r *Runner) LogFileFor(kind string) string {
-	return filepath.Join(r.logDir(), fmt.Sprintf("%s__%s.log", kind, r.runLabel()))
+	return filepath.Join(r.logDir(), fmt.Sprintf("%s.%s.log", kind, r.runLabel()))
+}
+
+// rpmQAPath returns the path for a phase's `rpm -qa` listing, named
+// "rpm-qa.<phase>.<runLabel>" (phase is "init" for the base image, "post" for
+// the end-state after the build).
+func (r *Runner) rpmQAPath(phase string) string {
+	return filepath.Join(r.logDir(), fmt.Sprintf("rpm-qa.%s.%s", phase, r.runLabel()))
 }

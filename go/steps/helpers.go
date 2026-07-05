@@ -132,6 +132,30 @@ func applyPatch(dir, patchFile string) error {
 	return nil
 }
 
+// specFileIn returns the single *.spec filename in specsDir, as its base name
+// so it can be passed to rpmbuild/yum-builddep with specsDir as the working
+// directory. Installing a src.rpm lays down exactly one spec; finding none or
+// several is an error, since we cannot know which to build.
+func specFileIn(specsDir string) (string, error) {
+	matches, err := filepath.Glob(filepath.Join(specsDir, "*.spec"))
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(matches)
+	switch len(matches) {
+	case 1:
+		return filepath.Base(matches[0]), nil
+	case 0:
+		return "", fmt.Errorf("no .spec file found in %s (was the src.rpm installed?)", specsDir)
+	default:
+		names := make([]string, len(matches))
+		for i, m := range matches {
+			names[i] = filepath.Base(m)
+		}
+		return "", fmt.Errorf("expected exactly one .spec file in %s, found %d: %v", specsDir, len(matches), names)
+	}
+}
+
 // captureRPMQA writes a sorted `rpm -qa` listing to path.
 func captureRPMQA(path string) error {
 	out, err := exec.Command("rpm", "-qa").Output()

@@ -51,6 +51,13 @@ type Options struct {
 func BuildOne(osName, label string, opts Options) int {
 	start := time.Now()
 
+	// One random code and one timestamp per run, shared by the container name
+	// and every log filename (host build-one log plus the in-container
+	// ossetup/build/rpm-qa files, via the RUN_CODE/RUN_DATETIME environment variables
+	// below) so a run's files all carry the same code and date.
+	code := randomSuffix(5)
+	date := start.UTC().Format("20060102.150405")
+
 	dir, err := os.Getwd()
 	if err != nil {
 		logx.Fatalf(1, "cannot determine working directory: %v", err)
@@ -68,7 +75,7 @@ func BuildOne(osName, label string, opts Options) int {
 		logx.Fatalf(2, "%v", err)
 	}
 
-	logFile := filepath.Join(dir, "log", fmt.Sprintf("build-one-%s-%s.log", osName, label))
+	logFile := filepath.Join(dir, "log", fmt.Sprintf("build-one.%s__%s__%s__%s.log", osName, label, code, date))
 	closer, err := logx.SetTee(logFile)
 	if err != nil {
 		logx.Fatalf(1, "cannot open logfile %s: %v", logFile, err)
@@ -89,7 +96,7 @@ func BuildOne(osName, label string, opts Options) int {
 		logx.Logf("- will stop the container after %s", opts.Timeout)
 	}
 
-	name := fmt.Sprintf("mysql-rpm-builder-%s-%s", label, randomSuffix(5))
+	name := fmt.Sprintf("mysql-rpm-builder-%s-%s", label, code)
 	dockerArgs := []string{
 		"run",
 		"--name=" + name,
@@ -98,6 +105,8 @@ func BuildOne(osName, label string, opts Options) int {
 		"--hostname=buildhost",
 		"-v", dir + ":/data",
 		"-w", "/data",
+		"-e", "RUN_CODE=" + code,
+		"-e", "RUN_DATETIME=" + date,
 		image,
 		ContainerBinary, "run", label,
 	}

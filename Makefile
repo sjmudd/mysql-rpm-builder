@@ -32,8 +32,12 @@ lint:
 .PHONY: build
 build: $(BINARY)
 
+# CGO_ENABLED=0 makes this a truly static binary (pure-Go os/user + net), with
+# no glibc version dependency, so the one binary runs in every container
+# regardless of the OS's glibc — e.g. el8 (glibc 2.28) / el7, not just the newer
+# glibc on the build host and el9/el10.
 $(BINARY): go.mod go.sum $(wildcard go/*/*.go)
-	go build -o $(BINARY) $(PKG)
+	CGO_ENABLED=0 go build -o $(BINARY) $(PKG)
 
 ## test: run the Go test suite (none yet, but wired up)
 .PHONY: test

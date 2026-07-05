@@ -10,8 +10,8 @@
 //
 //   - Host:          build-one [-n] <os> <label>   launch a container build
 //   - Orchestration: run|setup|build-rpm <label>   run inside the container
-//   - Individual:    refresh|setup-repos|install-packages|fix-annobin|os-tweaks
-//     |create-user|install-srpm|install-builddeps|apply-patches|rpmbuild|collect <label>
+//   - Individual:    record-init|refresh|setup-repos|install-packages|fix-annobin
+//     |os-tweaks|create-user|install-srpm|install-builddeps|apply-patches|rpmbuild|collect <label>
 //
 // The individual step commands let a failed stage be re-run in a debug
 // container without repeating the expensive rpmbuild.
@@ -43,7 +43,7 @@ func main() {
 	case "build-one":
 		runBuildOne(rest)
 	case "run", "setup", "build-rpm",
-		"refresh", "setup-repos", "install-packages", "fix-annobin", "os-tweaks", "create-user",
+		"record-init", "refresh", "setup-repos", "install-packages", "fix-annobin", "os-tweaks", "create-user",
 		"install-srpm", "install-builddeps", "apply-patches", "rpmbuild", "collect":
 		runContainer(cmd, rest)
 	case "version", "-v", "--version":
@@ -103,6 +103,7 @@ A build stopped early by -test/-until/-timeout is reported as success (rc 0).
 var stageNeedsRoot = map[string]bool{
 	"setup":             true,
 	"run":               true,
+	"record-init":       true,
 	"refresh":           true,
 	"setup-repos":       true,
 	"install-packages":  true,
@@ -147,6 +148,8 @@ func runContainer(cmd string, args []string) {
 		stageErr = r.Setup()
 	case "build-rpm":
 		stageErr = r.BuildRPM()
+	case "record-init":
+		stageErr = r.RecordInitialPackages()
 	case "refresh":
 		stageErr = r.Refresh()
 	case "setup-repos":
@@ -213,9 +216,9 @@ In-container orchestration:
   build-rpm <label>             rpmbuild-user stages after install-srpm/builddep
 
 In-container individual steps (root):
-  refresh <label> | setup-repos <label> | install-packages <label>
-  fix-annobin <label> | os-tweaks <label> | create-user <label>
-  install-builddeps <label>
+  record-init <label> | refresh <label> | setup-repos <label>
+  install-packages <label> | fix-annobin <label> | os-tweaks <label>
+  create-user <label> | install-builddeps <label>
 
 In-container individual steps (rpmbuild user):
   install-srpm <label> | apply-patches <label> | rpmbuild <label> | collect <label>

@@ -127,8 +127,9 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
   1. **`packages`** — an explicit list, installed as root before the build.
   2. **`auto_install_dependencies: true`** — the `install-builddeps` step
      installs `yum-utils` (which provides `yum-builddep`) and runs
-     `yum-builddep` against the *extracted `mysql.spec`* to resolve its
-     `BuildRequires`. Optional. If present must be `true`/`false`.
+     `yum-builddep` against the *extracted spec* (auto-detected as the single
+     `*.spec` in `SPECS/`) to resolve its `BuildRequires`. Optional. If present
+     must be `true`/`false`.
 
   At least one of `auto_install_dependencies` or `packages` must be set.
   Listing everything in `packages` (with `auto_install_dependencies: false`)
@@ -173,12 +174,12 @@ docker run --rm --network=host --hostname=buildhost \
 ```
 
 Inside the container `run` executes as root and prepares the OS
-(`refresh` → `setup-repos` → `install-packages` → `fix-annobin` →
-`os-tweaks` → `create-user`), then drives the build across privilege
-boundaries:
+(`record-init` → `refresh` → `setup-repos` → `install-packages` →
+`fix-annobin` → `os-tweaks` → `create-user`), then drives the build across
+privilege boundaries:
 
 1. as the non-root `rpmbuild` user, fetch and extract the source RPM
-   (`install-srpm`) — this lays down `mysql.spec`;
+   (`install-srpm`) — this lays down the package's spec file;
 2. back as root, resolve the spec's build dependencies
    (`install-builddeps`, when `auto_install_dependencies` is set);
 3. as `rpmbuild` again, patch, build and collect
@@ -272,11 +273,19 @@ Logs are written under `log/` (UTC timestamps). Because `log/`, `SRPMS/`
 and `built/` live in the mounted `$PWD` they persist even when the
 container is removed with `--rm`:
 
-- `log/build-one-<os>-<label>.log` — host-side launcher log
+Per-run files share one identifier, `<os>__<label>__<code>__<datetime>`, where
+`<code>` is a random per-run code (also used for the container name) and
+`<datetime>` is a single timestamp generated once per run:
+
+- `log/build-one.<os>__<label>__<code>__<datetime>.log` — host-side launcher log
 - `log/build-one.build_status` — one line per build (status, rc, elapsed)
-- `log/ossetup__<label>.log`, `log/build__<label>.log` — in-container stages
-- `log/rpm-qa.<label>` (or `.failed`) — the installed package list at build
-  time, useful for reproducing or reporting a build
+- `log/ossetup.<os>__<label>__<code>__<datetime>.log`,
+  `log/build.<os>__<label>__<code>__<datetime>.log` — in-container stages
+- `log/rpm-qa.init.<os>__<label>__<code>__<datetime>` — sorted package list of
+  the untouched base image, before any packages are changed
+- `log/rpm-qa.post.<os>__<label>__<code>__<datetime>` (or `.failed`) — sorted
+  end-state package list at build time, useful for reproducing or reporting a
+  build and for comparing base images across OS versions
 
 ## A note on OS labels
 
