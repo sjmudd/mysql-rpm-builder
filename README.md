@@ -283,9 +283,10 @@ Per-run files share one identifier, `<os>__<label>__<code>__<datetime>`, where
   `log/build.<os>__<label>__<code>__<datetime>.log` — in-container stages
 - `log/rpm-qa.init.<os>__<label>__<code>__<datetime>` — sorted package list of
   the untouched base image, before any packages are changed
-- `log/rpm-qa.post.<os>__<label>__<code>__<datetime>` (or `.failed`) — sorted
-  end-state package list at build time, useful for reproducing or reporting a
-  build and for comparing base images across OS versions
+- `log/rpm-qa.post.<os>__<label>__<code>__<datetime>` — sorted end-state
+  package list, captured just before `rpmbuild -ba` (so it is written even on an
+  early `-test`/`-timeout` stop or a build failure), useful for reproducing or
+  reporting a build and for comparing base images across OS versions
 
 ## A note on OS labels
 

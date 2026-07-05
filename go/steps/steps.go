@@ -383,9 +383,15 @@ func (r *Runner) ApplyPatches() error {
 	return nil
 }
 
-// RPMBuild runs rpmbuild and records the resulting package list, porting
-// rpmbuild_rpms. A build failure is returned as an error after the failed
-// package list is captured.
+// RPMBuild records the end-state package list and then runs rpmbuild, porting
+// rpmbuild_rpms.
+//
+// The rpm -qa listing is captured *before* rpmbuild -ba: no packages are
+// installed during the build itself, so the installed set is already final once
+// install-packages/install-builddeps have run. Capturing first guarantees the
+// list is written even when the build is stopped early (-test/-timeout) or
+// fails partway through — which is why there is no separate ".failed" variant
+// (build success/failure is recorded in the log and build_status).
 func (r *Runner) RPMBuild() error {
 	home, err := rpmbuildHome()
 	if err != nil {
@@ -396,17 +402,14 @@ func (r *Runner) RPMBuild() error {
 	if err != nil {
 		return err
 	}
+
+	if err := captureRPMQA(r.rpmQAPath("post")); err != nil {
+		logx.Logf("- warning: could not capture rpm -qa: %v", err)
+	}
+
 	logx.Logf("### rpmbuild: started at %s", time.Now().UTC().Format(time.RFC3339))
 	buildErr := runIn(specs, "rpmbuild", "--define", r.rpmDefine(), "-ba", spec)
 	logx.Logf("### rpmbuild: finished, error=%v", buildErr)
-
-	qa := r.rpmQAPath("post")
-	if buildErr != nil {
-		qa += ".failed"
-	}
-	if err := captureRPMQA(qa); err != nil {
-		logx.Logf("- warning: could not capture rpm -qa: %v", err)
-	}
 	return buildErr
 }
 
