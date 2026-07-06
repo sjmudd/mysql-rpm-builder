@@ -23,6 +23,9 @@ oses:
 
   rocky8:
     image: rockylinux:8
+    repos:
+      enable: [powertools]
+      epel_packages: [epel-release]
   rocky9:
     image: rockylinux:9
     repos:
