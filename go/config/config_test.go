@@ -14,7 +14,7 @@ import (
 // loadTestdata loads the synthetic images.yaml + config.yaml under testdata/.
 func loadTestdata(t *testing.T) *Config {
 	t.Helper()
-	c, err := Load("testdata")
+	c, err := Load("testdata", "")
 	if err != nil {
 		t.Fatalf("loading testdata config: %v", err)
 	}
@@ -105,13 +105,36 @@ func TestImage(t *testing.T) {
 	}
 }
 
+func TestLoadAlternateConfigFile(t *testing.T) {
+	c, err := Load("testdata", "alt-config.yaml")
+	if err != nil {
+		t.Fatalf("loading alternate config: %v", err)
+	}
+	if c.configFileName != "alt-config.yaml" {
+		t.Errorf("configFileName = %q, want %q", c.configFileName, "alt-config.yaml")
+	}
+	if _, err := c.Resolve("ol10", "9.7.1"); err != nil {
+		t.Errorf("Resolve(ol10, 9.7.1) failed: %v", err)
+	}
+}
+
+func TestLoadMissingConfigFile(t *testing.T) {
+	_, err := Load("testdata", "missing-config.yaml")
+	if err == nil {
+		t.Fatalf("expected error loading missing config file, got nil")
+	}
+	if !strings.Contains(err.Error(), "missing-config.yaml") {
+		t.Errorf("error = %q, want it to mention missing-config.yaml", err.Error())
+	}
+}
+
 // TestRealConfigResolves loads the repository's actual images.yaml and
 // config.yaml and asserts that every configured (os, label) resolves cleanly.
 // This guards against typos or unknown keys in the files most often edited
 // (readYAML uses KnownFields(true), so stray keys fail the load).
 func TestRealConfigResolves(t *testing.T) {
 	repoRoot := filepath.Join("..", "..")
-	c, err := Load(repoRoot)
+	c, err := Load(repoRoot, "")
 	if err != nil {
 		t.Fatalf("loading real config from %s: %v", repoRoot, err)
 	}

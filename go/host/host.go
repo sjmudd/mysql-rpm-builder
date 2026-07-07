@@ -43,6 +43,8 @@ type Options struct {
 	// Until, if non-nil, stops the container as soon as a line of build output
 	// matches this regexp (see CompileMarker for the common "past cmake" case).
 	Until *regexp.Regexp
+	// ConfigFile, if non-empty, is an alternate config.yaml path (relative to the repo root).
+	ConfigFile string
 }
 
 // BuildOne launches a Docker container to build the given MySQL label on the
@@ -63,7 +65,7 @@ func BuildOne(osName, label string, opts Options) int {
 		logx.Fatalf(1, "cannot determine working directory: %v", err)
 	}
 
-	cfg, err := config.Load(dir)
+	cfg, err := config.Load(dir, opts.ConfigFile)
 	if err != nil {
 		logx.Fatalf(1, "%v", err)
 	}
@@ -89,6 +91,9 @@ func BuildOne(osName, label string, opts Options) int {
 		noopText = "NOT "
 	}
 	logx.Logf("%sattempting to build MySQL %s on %s (image %s)", noopText, label, osName, image)
+	if opts.ConfigFile != "" {
+		logx.Logf("- using alternate config file: %s", opts.ConfigFile)
+	}
 	if opts.Until != nil {
 		logx.Logf("- will stop the container when build output matches /%s/", opts.Until)
 	}
@@ -108,8 +113,12 @@ func BuildOne(osName, label string, opts Options) int {
 		"-e", "RUN_CODE=" + code,
 		"-e", "RUN_DATETIME=" + date,
 		image,
-		ContainerBinary, "run", label,
+		ContainerBinary, "run",
 	}
+	if opts.ConfigFile != "" {
+		dockerArgs = append(dockerArgs, "-c", opts.ConfigFile)
+	}
+	dockerArgs = append(dockerArgs, label)
 
 	rc := 0
 	var stopper earlyStopper

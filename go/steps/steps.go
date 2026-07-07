@@ -31,9 +31,10 @@ const DataDir = "/data"
 // Runner carries the resolved configuration for one (os, label) build and
 // provides one method per stage.
 type Runner struct {
-	Cfg     config.Resolved
-	OS      osrelease.Info
-	DataDir string
+	Cfg        config.Resolved
+	OS         osrelease.Info
+	DataDir    string
+	ConfigFile string
 	// Code is the per-run random code (from the RUN_CODE environment variable),
 	// shared with the host build-one log and the container name. It is included
 	// in per-run log/rpm-qa filenames; when empty (e.g. an individual step run by
@@ -47,13 +48,14 @@ type Runner struct {
 }
 
 // NewRunner detects the current OS, loads the configuration from dataDir and
-// resolves the build for the given MySQL label.
-func NewRunner(dataDir, label string) (*Runner, error) {
+// resolves the build for the given MySQL label. configFile, if empty, defaults
+// to config.yaml.
+func NewRunner(dataDir, label, configFile string) (*Runner, error) {
 	info, err := osrelease.Detect()
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := config.Load(dataDir)
+	cfg, err := config.Load(dataDir, configFile)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +63,7 @@ func NewRunner(dataDir, label string) (*Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Runner{Cfg: resolved, OS: info, DataDir: dataDir, Code: os.Getenv("RUN_CODE"), Date: runDateTime()}, nil
+	return &Runner{Cfg: resolved, OS: info, DataDir: dataDir, ConfigFile: configFile, Code: os.Getenv("RUN_CODE"), Date: runDateTime()}, nil
 }
 
 // runDateTime returns the per-run timestamp: the value threaded in via
@@ -505,7 +507,11 @@ func (r *Runner) suBuild(stage string) error {
 	// `su -` starts a login shell that resets the environment, so re-inject the
 	// per-run code and timestamp as inline assignments on the command it runs,
 	// keeping every stage's filenames tied to the same code and date.
-	cmdStr := fmt.Sprintf("%s %s %s", exe, stage, r.Cfg.Label)
+	cmdStr := fmt.Sprintf("%s %s", exe, stage)
+	if r.ConfigFile != "" {
+		cmdStr += " -c " + r.ConfigFile
+	}
+	cmdStr += " " + r.Cfg.Label
 	if r.Date != "" {
 		cmdStr = "RUN_DATETIME=" + r.Date + " " + cmdStr
 	}

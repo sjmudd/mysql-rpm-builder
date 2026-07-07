@@ -56,7 +56,7 @@ func main() {
 }
 
 // runBuildOne handles the host-side
-// `build-one [-n] [-test] [-until <re>] [-timeout <dur>] <os> <label>`.
+// `build-one [-n] [-test] [-until <re>] [-timeout <dur>] [-c <config>] <os> <label>`.
 func runBuildOne(args []string) {
 	fs := flag.NewFlagSet("build-one", flag.ExitOnError)
 	fs.Usage = func() {
@@ -68,6 +68,7 @@ func runBuildOne(args []string) {
                   build deps and cmake configure all work without a full build
   -until <regexp> stop the container when a line of build output matches <regexp>
   -timeout <dur>  stop the container after <dur> (e.g. 30m, 2h)
+  -c <path>       use an alternate config file instead of config.yaml
 
 A build stopped early by -test/-until/-timeout is reported as success (rc 0).
 `)
@@ -76,6 +77,7 @@ A build stopped early by -test/-until/-timeout is reported as success (rc 0).
 	test := fs.Bool("test", false, "stop once compilation starts (past cmake)")
 	until := fs.String("until", "", "stop when build output matches this regexp")
 	timeout := fs.Duration("timeout", 0, "stop the container after this duration")
+	configFile := fs.String("c", "", "alternate config.yaml path, relative to the repo root")
 	_ = fs.Parse(args)
 
 	pos := fs.Args()
@@ -84,7 +86,7 @@ A build stopped early by -test/-until/-timeout is reported as success (rc 0).
 		os.Exit(1)
 	}
 
-	opts := host.Options{Noop: *noop, Timeout: *timeout}
+	opts := host.Options{Noop: *noop, Timeout: *timeout, ConfigFile: *configFile}
 	switch {
 	case *until != "":
 		re, err := regexp.Compile(*until)
@@ -120,14 +122,25 @@ var stageNeedsRoot = map[string]bool{
 
 // runContainer handles all in-container commands.
 func runContainer(cmd string, args []string) {
-	if len(args) < 1 {
-		logx.Fatalf(1, "usage: mysql-rpm-builder %s <label>", cmd)
+	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "usage: mysql-rpm-builder %s [flags] <label>\n", cmd)
+		fmt.Fprintf(os.Stderr, "\nflags:\n")
+		fs.PrintDefaults()
 	}
-	label := args[0]
+	configFile := fs.String("c", "", "alternate config.yaml path, relative to the repo root")
+	_ = fs.Parse(args)
+
+	pos := fs.Args()
+	if len(pos) < 1 {
+		fs.Usage()
+		os.Exit(1)
+	}
+	label := pos[0]
 
 	checkPrivilege(cmd)
 
-	r, err := steps.NewRunner(steps.DataDir, label)
+	r, err := steps.NewRunner(steps.DataDir, label, *configFile)
 	if err != nil {
 		logx.Fatalf(1, "%v", err)
 	}
@@ -207,21 +220,24 @@ func usage() {
 	fmt.Fprint(os.Stderr, `mysql-rpm-builder - build MySQL RPMs from source RPMs
 
 Host:
-  build-one [-n] <os> <label>   launch a Docker container to build <label> on <os>
+  build-one [flags] <os> <label>   launch a Docker container to build <label> on <os>
 
 In-container orchestration:
-  run <label>                   full build (setup + rpmbuild), invoked by build-one
-  setup <label>                 root OS-prep, then drives install-srpm,
-                                install-builddeps (root) and build-rpm
-  build-rpm <label>             rpmbuild-user stages after install-srpm/builddep
+  run [flags] <label>              full build (setup + rpmbuild), invoked by build-one
+  setup [flags] <label>            root OS-prep, then drives install-srpm,
+                                   install-builddeps (root) and build-rpm
+  build-rpm [flags] <label>        rpmbuild-user stages after install-srpm/builddep
 
 In-container individual steps (root):
-  record-init <label> | refresh <label> | setup-repos <label>
-  install-packages <label> | fix-annobin <label> | os-tweaks <label>
-  create-user <label> | install-builddeps <label>
+  record-init [flags] <label> | refresh [flags] <label> | setup-repos [flags] <label>
+  install-packages [flags] <label> | fix-annobin [flags] <label> | os-tweaks [flags] <label>
+  create-user [flags] <label> | install-builddeps [flags] <label>
 
 In-container individual steps (rpmbuild user):
-  install-srpm <label> | apply-patches <label> | rpmbuild <label> | collect <label>
+  install-srpm [flags] <label> | apply-patches [flags] <label> | rpmbuild [flags] <label> | collect [flags] <label>
+
+Flags:
+  -c path                       use an alternate config file (relative to repo root) instead of config.yaml
 
 Other:
   version                       print the binary version and exit

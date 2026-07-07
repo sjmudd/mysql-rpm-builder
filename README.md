@@ -58,11 +58,13 @@ The binary is invoked by subcommand:
 
 | Command | Where | Purpose |
 |---|---|---|
-| `build-one [-n] <os> <label>` | host | launch a Docker container and build `<label>` on `<os>` |
-| `run <label>` / `setup <label>` | container (root) | full build: run all OS-prep stages, then drive the build across privilege boundaries; invoked by `build-one` |
-| `build-rpm <label>` | container (rpmbuild) | patch → rpmbuild → collect (run after `install-srpm`/`install-builddeps`) |
-| `refresh` / `setup-repos` / `install-packages` / `fix-annobin` / `os-tweaks` / `create-user` / `install-builddeps` `<label>` | container (root) | individual OS-prep / build-dep steps |
-| `install-srpm` / `apply-patches` / `rpmbuild` / `collect` `<label>` | container (rpmbuild) | individual build steps |
+| `build-one [-n] [-c <config>] <os> <label>` | host | launch a Docker container and build `<label>` on `<os>` |
+| `run [-c <config>] <label>` / `setup [-c <config>] <label>` | container (root) | full build: run all OS-prep stages, then drive the build across privilege boundaries; invoked by `build-one` |
+| `build-rpm [-c <config>] <label>` | container (rpmbuild) | patch → rpmbuild → collect (run after `install-srpm`/`install-builddeps`) |
+| `refresh [-c <config>] <label>` / `setup-repos` / `install-packages` / `fix-annobin` / `os-tweaks` / `create-user` / `install-builddeps` | container (root) | individual OS-prep / build-dep steps |
+| `install-srpm [-c <config>] <label>` / `apply-patches` / `rpmbuild` / `collect` | container (rpmbuild) | individual build steps |
+
+All subcommands optionally accept `-c <config>` to use an alternate config file (relative to the repo root) instead of the default `config.yaml`.
 
 Every step is individually runnable, which makes debugging a failed build
 much easier (see [Building in individual steps](#building-in-individual-steps)).
@@ -144,11 +146,20 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
 ### Adding a build
 
 1. Ensure the OS exists in `images.yaml` (image + repos).
-2. Add a `<version>:` block under `oses.<os>.builds` in `config.yaml` with
-   the `srpm:` URL and an `auto_install_dependencies:` flag (plus an optional
-   `packages:` list) — usually copying the previous version's block is
-   sufficient, but beware of compiler/other changes over time.
-3. Build it: `./build-one <os> <version>`.
+2. Create a test config file (e.g., `test-config.yaml`) with your new build
+   entry, or add it to `config.yaml` directly.
+3. Build and test it: `./build-one -c test-config.yaml <os> <version>` (or
+   `./build-one <os> <version>` if added to `config.yaml`).
+4. For a quick validation without a full build, use
+   `./build-one -test -c test-config.yaml <os> <version>` to stop as soon
+   as compilation starts (past cmake).
+5. Once validated, add the entry to `config.yaml` permanently (copying the
+   previous version's block is usually sufficient, but watch for compiler/
+   other changes over time).
+
+The `-c <config>` flag is useful for testing new build entries without modifying
+`config.yaml`: you can prepare a separate config file, validate it works, and
+then merge it into the main config once ready.
 
 ## Build Process
 
@@ -158,6 +169,11 @@ Typical usage:
 
 - `./build-one <os> <version>`
 - e.g. `./build-one ol10 9.7.1` or `./build-one rocky9 9.6.0`
+
+To use an alternate config file:
+
+- `./build-one -c <config> <os> <version>`
+- e.g. `./build-one -c test-config.yaml ol10 9.7.1`
 
 If you omit a parameter, the valid choices are listed.
 
@@ -171,6 +187,15 @@ docker run --rm --network=host --hostname=buildhost \
     -v $PWD:/data -w /data \
     oraclelinux:10 \
     /data/mysql-rpm-builder run 9.7.1
+```
+
+If using an alternate config file (e.g. `./build-one -c test-config.yaml ol10 9.7.1`):
+
+```
+docker run --rm --network=host --hostname=buildhost \
+    -v $PWD:/data -w /data \
+    oraclelinux:10 \
+    /data/mysql-rpm-builder run -c test-config.yaml 9.7.1
 ```
 
 Inside the container `run` executes as root and prepares the OS
@@ -202,6 +227,12 @@ flags stop the container early so a new combination can be validated fast:
 ./build-one -test ol10 9.7.1              # stop as soon as compiling starts (past cmake)
 ./build-one -timeout 30m ol10 9.7.1       # stop after 30m regardless
 ./build-one -until 'Building CXX object' ol10 9.7.1  # stop on a custom output marker
+```
+
+When testing a new build entry in an alternate config file:
+
+```
+./build-one -test -c test-config.yaml ol10 9.7.1
 ```
 
 `-test` is the common case: reaching the first compile line means OS prep,
@@ -239,21 +270,36 @@ Then, as root, run the OS-prep steps:
 # /data/mysql-rpm-builder create-user 9.7.1
 ```
 
-then, as the `rpmbuild` user (`su - rpmbuild`), fetch and extract the source
+If testing with an alternate config file, pass `-c <config>` to each step:
+
+```
+# /data/mysql-rpm-builder refresh -c test-config.yaml 9.7.1
+# /data/mysql-rpm-builder setup-repos -c test-config.yaml 9.7.1
+# /data/mysql-rpm-builder install-packages -c test-config.yaml 9.7.1
+# /data/mysql-rpm-builder create-user -c test-config.yaml 9.7.1
+```
+
+Then, as the `rpmbuild` user (`su - rpmbuild`), fetch and extract the source
 RPM:
 
 ```
 $ /data/mysql-rpm-builder install-srpm 9.7.1
 ```
 
-back as root, resolve the build dependencies from the extracted spec (only
+or with an alternate config:
+
+```
+$ /data/mysql-rpm-builder install-srpm -c test-config.yaml 9.7.1
+```
+
+Back as root, resolve the build dependencies from the extracted spec (only
 needed when `auto_install_dependencies` is set for this build):
 
 ```
 # /data/mysql-rpm-builder install-builddeps 9.7.1
 ```
 
-and, as the `rpmbuild` user again, the remaining build steps:
+And, as the `rpmbuild` user again, the remaining build steps:
 
 ```
 $ /data/mysql-rpm-builder apply-patches 9.7.1

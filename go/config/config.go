@@ -79,8 +79,9 @@ type configFile struct {
 
 // Config is the merged, in-memory configuration.
 type Config struct {
-	images imagesFile
-	config configFile
+	images         imagesFile
+	config         configFile
+	configFileName string
 }
 
 // Resolved is everything needed to build one (os, label) combination.
@@ -92,13 +93,17 @@ type Resolved struct {
 	Build Build
 }
 
-// Load reads and parses images.yaml and config.yaml from dir.
-func Load(dir string) (*Config, error) {
-	c := &Config{}
+// Load reads and parses images.yaml and a config file from dir.
+// If configFile is empty, DefaultConfigFile ("config.yaml") is used.
+func Load(dir, configFile string) (*Config, error) {
+	if configFile == "" {
+		configFile = DefaultConfigFile
+	}
+	c := &Config{configFileName: configFile}
 	if err := readYAML(filepath.Join(dir, DefaultImagesFile), &c.images); err != nil {
 		return nil, err
 	}
-	if err := readYAML(filepath.Join(dir, DefaultConfigFile), &c.config); err != nil {
+	if err := readYAML(filepath.Join(dir, configFile), &c.config); err != nil {
 		return nil, err
 	}
 	return c, nil
@@ -166,11 +171,11 @@ func (c *Config) Resolve(osName, label string) (Resolved, error) {
 	}
 	entry, ok := c.config.OSes[osName]
 	if !ok {
-		return Resolved{}, fmt.Errorf("no builds configured for OS %q in %s", osName, DefaultConfigFile)
+		return Resolved{}, fmt.Errorf("no builds configured for OS %q in %s", osName, c.configFileName)
 	}
 	build, ok := entry.Builds[label]
 	if !ok {
-		return Resolved{}, fmt.Errorf("no build %q for OS %q in %s (known: %v)", label, osName, DefaultConfigFile, c.Labels(osName))
+		return Resolved{}, fmt.Errorf("no build %q for OS %q in %s (known: %v)", label, osName, c.configFileName, c.Labels(osName))
 	}
 	if build.SRPM == "" {
 		return Resolved{}, fmt.Errorf("build %q on OS %q has no srpm URL", label, osName)
