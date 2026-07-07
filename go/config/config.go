@@ -62,10 +62,7 @@ type Build struct {
 
 // ShouldInstallDependencies returns true if we explicitly set AutoInstallDependencies to true
 func (b Build) ShouldInstallDependencies() bool {
-	if b.AutoInstallDependencies != nil {
-		return *b.AutoInstallDependencies
-	}
-	return false
+	return b.AutoInstallDependencies != nil && *b.AutoInstallDependencies
 }
 
 // imagesFile mirrors the top level of images.yaml.
