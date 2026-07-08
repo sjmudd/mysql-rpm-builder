@@ -1,0 +1,8 @@
+# Minimal alternate config.yaml for testing config.Load with custom file
+oses:
+  ol10:
+    builds:
+      9.7.1:
+        srpm: https://example.invalid/mysql-9.7.1-alt.src.rpm
+        auto_install_dependencies: true
+        packages: [cmake, gcc]

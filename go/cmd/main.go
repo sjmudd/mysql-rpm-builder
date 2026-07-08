@@ -56,19 +56,26 @@ func main() {
 }
 
 // runBuildOne handles the host-side
-// `build-one [-n] [-test] [-until <re>] [-timeout <dur>] [-c <config>] <os> <label>`.
+// `build-one [-n] [-test] [-until <re>] [-timeout <dur>] [-c <config>] [-add-if-successful] <os> <label>`.
 func runBuildOne(args []string) {
 	fs := flag.NewFlagSet("build-one", flag.ExitOnError)
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `usage: mysql-rpm-builder build-one [flags] <os> <label>
 
-  -n              dry run: print the docker command without running it
-  -test           stop once the build starts compiling (i.e. past cmake); a
-                  quick way to verify a new (os, version) combination's OS prep,
-                  build deps and cmake configure all work without a full build
-  -until <regexp> stop the container when a line of build output matches <regexp>
-  -timeout <dur>  stop the container after <dur> (e.g. 30m, 2h)
-  -c <path>       use an alternate config file instead of config.yaml
+  -n                  dry run: print the docker command without running it
+  -test               stop once the build starts compiling (i.e. past cmake); a
+                      quick way to verify a new (os, version) combination's OS prep,
+                      build deps and cmake configure all work without a full build
+  -until <regexp>     stop the container when a line of build output matches <regexp>
+  -timeout <dur>      stop the container after <dur> (e.g. 30m, 2h)
+  -c <path>           use an alternate config file instead of config.yaml
+  -add-if-successful  after a full successful build (not -test/-until/-timeout),
+                      merge the -c config's build entry into config.yaml.
+                      Requires -c. An existing (os, label) entry is never
+                      overwritten: identical entries are skipped silently,
+                      differing ones are skipped with a warning. The
+                      pre-merge config.yaml is preserved as
+                      config.yaml.<UTC timestamp>.
 
 A build stopped early by -test/-until/-timeout is reported as success (rc 0).
 `)
@@ -78,7 +85,15 @@ A build stopped early by -test/-until/-timeout is reported as success (rc 0).
 	until := fs.String("until", "", "stop when build output matches this regexp")
 	timeout := fs.Duration("timeout", 0, "stop the container after this duration")
 	configFile := fs.String("c", "", "alternate config.yaml path, relative to the repo root")
+	addIfSuccessful := fs.Bool("add-if-successful", false,
+		"after a full successful build, merge the -c config's build entry into config.yaml")
 	_ = fs.Parse(args)
+
+	if *addIfSuccessful && *configFile == "" {
+		fmt.Fprintln(os.Stderr, "error: -add-if-successful requires -c <config>")
+		fs.Usage()
+		os.Exit(1)
+	}
 
 	pos := fs.Args()
 	if len(pos) < 2 {
@@ -86,7 +101,7 @@ A build stopped early by -test/-until/-timeout is reported as success (rc 0).
 		os.Exit(1)
 	}
 
-	opts := host.Options{Noop: *noop, Timeout: *timeout, ConfigFile: *configFile}
+	opts := host.Options{Noop: *noop, Timeout: *timeout, ConfigFile: *configFile, AddIfSuccessful: *addIfSuccessful}
 	switch {
 	case *until != "":
 		re, err := regexp.Compile(*until)

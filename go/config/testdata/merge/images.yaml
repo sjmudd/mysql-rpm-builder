@@ -1,0 +1,18 @@
+# Minimal synthetic images.yaml for config.MergeBuild tests.
+oses:
+  trailing1:
+    image: test:trailing1
+    repos:
+      enable: []
+  trailing2:
+    image: test:trailing2
+    repos:
+      enable: []
+  allcommented:
+    image: test:allcommented
+    repos:
+      enable: []
+  existing:
+    image: test:existing
+    repos:
+      enable: []

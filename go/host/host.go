@@ -45,6 +45,10 @@ type Options struct {
 	Until *regexp.Regexp
 	// ConfigFile, if non-empty, is an alternate config.yaml path (relative to the repo root).
 	ConfigFile string
+	// AddIfSuccessful merges ConfigFile's build entry into config.yaml once
+	// a full build (not an early -test/-until/-timeout stop) succeeds.
+	// Requires ConfigFile to be set.
+	AddIfSuccessful bool
 }
 
 // BuildOne launches a Docker container to build the given MySQL label on the
@@ -73,8 +77,14 @@ func BuildOne(osName, label string, opts Options) int {
 	if !ok {
 		logx.Fatalf(3, "no image found for OS %q (known: %v)", osName, cfg.OSes())
 	}
-	if _, err := cfg.Resolve(osName, label); err != nil {
+	resolved, err := cfg.Resolve(osName, label)
+	if err != nil {
 		logx.Fatalf(2, "%v", err)
+	}
+	if opts.AddIfSuccessful {
+		if n := cfg.BuildCount(); n != 1 {
+			logx.Logf("- warning: %s defines %d build entries; -add-if-successful expects exactly 1", opts.ConfigFile, n)
+		}
 	}
 
 	logFile := filepath.Join(dir, "log", fmt.Sprintf("build-one.%s__%s__%s__%s.log", osName, label, code, date))
@@ -167,8 +177,33 @@ func BuildOne(osName, label string, opts Options) int {
 	elapsed := int(time.Since(start).Seconds())
 	appendBuildStatus(dir, osName, label, image, status, rc, elapsed)
 
+	if opts.AddIfSuccessful && status == "OK" {
+		mergeConfig(dir, osName, label, resolved.Build)
+	}
+
 	logx.Logf("exit status %d (%s) for %sbuild of %s on %s", rc, status, noopText, label, osName)
 	return rc
+}
+
+// mergeConfig folds a just-validated build entry into config.yaml (see
+// config.MergeBuild) and logs the outcome. It never affects the build's exit
+// code: the build already succeeded, and this is a best-effort convenience
+// on top of it.
+func mergeConfig(dir, osName, label string, build config.Build) {
+	status, err := config.MergeBuild(dir, osName, label, build, time.Now().UTC())
+	switch {
+	case err != nil:
+		logx.Logf("- warning: could not merge %s/%s into %s: %v (merge manually)",
+			osName, label, config.DefaultConfigFile, err)
+	case status == config.Merged:
+		logx.Logf("- merged %s/%s into %s", osName, label, config.DefaultConfigFile)
+	case status == config.SkippedIdentical:
+		logx.Logf("- %s/%s already present in %s and identical; nothing to merge",
+			osName, label, config.DefaultConfigFile)
+	case status == config.SkippedDiffers:
+		logx.Logf("- warning: %s/%s already present in %s with different settings; not overwriting",
+			osName, label, config.DefaultConfigFile)
+	}
 }
 
 // earlyStopper stops a named container once, recording why. It is safe for the

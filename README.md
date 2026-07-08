@@ -429,3 +429,4 @@ building from a git tree.
 - [Bug#115484: Missing BuildRequires for gcc-toolset-12 in mysql.spec.in for 9.0.0+](https://bugs.mysql.com/115484)
 - [Bug#111159: Incomplete documentation on MySQL rpm rebuilds makes rebuilding packages hard](https://bugs.mysql.com/111159)
 - [Bug#111088: src tarball made from github repo and provided in src.rpm files is not the same](https://bugs.mysql.com/111088)
+- [Bug#120895: 9.7.1 Missing BuildRequires: when building el8 / el9 variants breaks rpm bebuilds](https://bugs.mysql.com/120895)

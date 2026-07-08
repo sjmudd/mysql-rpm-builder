@@ -148,6 +148,29 @@ func (c *Config) OSes() []string {
 	return names
 }
 
+// Build returns the raw build entry for (osName, label) as currently
+// configured, without the SRPM/image validation Resolve performs. Used to
+// check whether a candidate build entry already exists.
+func (c *Config) Build(osName, label string) (Build, bool) {
+	entry, ok := c.config.OSes[osName]
+	if !ok {
+		return Build{}, false
+	}
+	build, ok := entry.Builds[label]
+	return build, ok
+}
+
+// BuildCount returns the total number of build entries configured across all
+// OSes in this config file. Used to sanity-check that an alternate config
+// file passed via -c defines exactly one build entry.
+func (c *Config) BuildCount() int {
+	n := 0
+	for _, entry := range c.config.OSes {
+		n += len(entry.Builds)
+	}
+	return n
+}
+
 // Labels returns the sorted MySQL labels configured for an OS.
 func (c *Config) Labels(osName string) []string {
 	entry, ok := c.config.OSes[osName]
