@@ -29,8 +29,6 @@ oses:
 
   almalinux10:
     builds:
-        srpm: 1.2.2.dummy
-        packages: []
 
   #
   # CentOS
