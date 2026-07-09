@@ -26,6 +26,12 @@ oses:
   #
   almalinux9:
     builds:
+      9.7.1:
+        # auto_install_dependencies: true is insufficient
+        # - see https://bugs.mysql.com/bug.php?id=120895
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el9.src.rpm
+        packages: [libfido2-devel, libudev-devel]
+        auto_install_dependencies: true
 
   almalinux10:
     builds:
@@ -39,14 +45,11 @@ oses:
   #
   ol9:
     builds:
-      # This works as all packages are defined explicitly
+      # auto_install_dependencies: true is insufficient
+      # - see https://bugs.mysql.com/bug.php?id=120895
       9.7.1:
-        srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.0-1.el9.src.rpm
-        packages: [bind-utils, bison, cmake, cyrus-sasl-devel, gcc-toolset-12-annobin-annocheck, gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils, gcc-toolset-12-dwz, gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++, gcc-toolset-14-annobin-annocheck, gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils, gcc-toolset-14-dwz, gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libtirpc-devel, libudev-devel, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, patchelf, perl, perl-JSON, rpcgen, systemd, time, zlib-devel]
-        # This fails due to missing packages not defined with BuildRequires: in the spec
-        # - see https://bugs.mysql.com/bug.php?id=120895
-      9.7.1-auto:
-        srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.0-1.el9.src.rpm
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el9.src.rpm
+        packages: [libfido2-devel, libudev-devel]
         auto_install_dependencies: true
 
   ol10:
@@ -72,8 +75,11 @@ oses:
   #
   rocky9:
     builds:
+      # auto_install_dependencies: true is insufficient
+      # - see https://bugs.mysql.com/bug.php?id=120895
       9.7.1:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el9.src.rpm
+        packages: [libfido2-devel, libudev-devel]
         auto_install_dependencies: true
 
   rocky10:
