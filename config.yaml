@@ -84,6 +84,9 @@ oses:
 
   rocky10:
     builds:
+      8.4.7:
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-community-8.4.7-1.el10.src.rpm
+        auto_install_dependencies: true
       8.4.10:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-community-8.4.10-1.el10.src.rpm
         auto_install_dependencies: true
