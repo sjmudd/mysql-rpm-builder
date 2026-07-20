@@ -47,6 +47,13 @@ oses:
     builds:
       # auto_install_dependencies: true is insufficient
       # - see https://bugs.mysql.com/bug.php?id=120895
+      8.4.10:
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-community-8.4.10-1.el9.src.rpm
+        packages: [libfido2-devel, libudev-devel]
+        auto_install_dependencies: true
+
+      # auto_install_dependencies: true is insufficient
+      # - see https://bugs.mysql.com/bug.php?id=120895
       9.7.1:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el9.src.rpm
         packages: [libfido2-devel, libudev-devel]
