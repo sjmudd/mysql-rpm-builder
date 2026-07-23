@@ -120,9 +120,9 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
                                                    # (no packages list needed)
   ```
 
-  The base tooling every build needs — `wget` (to fetch the src.rpm) and
-  `rpm-build` (provides `rpmbuild`) — is installed unconditionally by the
-  program (right after the initial `yum update`), so it never needs listing.
+  The base tooling every build needs — `rpm-build` (provides `rpmbuild`) —
+  is installed unconditionally by the program (right after the initial
+  `yum update`), so it never needs listing.
 
   There are two ways to supply the remaining build dependencies:
 

@@ -36,8 +36,16 @@ build: $(BINARY)
 # no glibc version dependency, so the one binary runs in every container
 # regardless of the OS's glibc — e.g. el8 (glibc 2.28) / el7, not just the newer
 # glibc on the build host and el9/el10.
+#
+# Required: ubuntu 26.04: sudo apt install musl-tools for bulding ol8 8.4.7
+#
 $(BINARY): go.mod go.sum $(wildcard go/*/*.go)
-	CGO_ENABLED=0 go build -o $(BINARY) $(PKG)
+#   This works if there are no glibc issues
+#	CGO_ENABLED=0 go build -o $(BINARY) $(PKG)
+#	These 2 attempts failed
+#	CGO_ENABLED=0 go build -ldflags "-s -w" -o $(BINARY) $(PKG)
+#	CGO_ENABLED=0 go build -ldflags "-extldflags '-static'" -o $(BINARY) $(PKG)
+	CGO_ENABLED=1 CC=musl-gcc go build -ldflags "-linkmode external -extldflags '-static'" -o $(BINARY) $(PKG)
 
 ## test: run the Go test suite (none yet, but wired up)
 .PHONY: test

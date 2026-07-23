@@ -97,7 +97,7 @@ func (r *Runner) builtDir() string { return filepath.Join(r.DataDir, "built") }
 // BaseBuildPackages are required for every build regardless of (os, version),
 // so they are installed unconditionally in Refresh rather than listed in each
 // config entry. util-linux provides 'su'.
-var BaseBuildPackages = []string{"rpm-build", "util-linux", "wget"}
+var BaseBuildPackages = []string{"rpm-build", "util-linux"}
 
 // RecordInitialPackages captures the base container image's package list before
 // any packages are changed, writing a sorted listing to rpm-qa.init.<runLabel>.
@@ -155,9 +155,9 @@ func (r *Runner) SetupRepos() error {
 
 // InstallPackages installs the explicitly listed build packages for this
 // (os, version) as root, before the build. With auto_install_dependencies this
-// list only needs the tooling that is not a BuildRequires (e.g. wget to fetch
-// the src.rpm, rpm-build for rpmbuild); the spec's BuildRequires are resolved
-// separately by InstallBuildDeps, after install-srpm has laid down the spec.
+// list only needs the tooling that is not a BuildRequires; the spec's
+// BuildRequires are resolved separately by InstallBuildDeps, after
+// install-srpm has laid down the spec.
 func (r *Runner) InstallPackages() error {
 	b := r.Cfg.Build
 	if !b.ShouldInstallDependencies() && len(b.Packages) == 0 {
@@ -346,7 +346,7 @@ func (r *Runner) InstallSRPM() error {
 		if err := os.MkdirAll(r.srpmsDir(), 0o755); err != nil {
 			return err
 		}
-		if err := runIn(r.srpmsDir(), "wget", "-nv", "-O", cached, url); err != nil {
+		if err := runIn(r.srpmsDir(), "curl", "-sS", "-L", "-o", cached, url); err != nil {
 			return err
 		}
 	}
