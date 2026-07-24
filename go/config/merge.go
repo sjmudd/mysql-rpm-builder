@@ -53,6 +53,38 @@ var (
 	realEntryRe = regexp.MustCompile(`^      [^#\s].*:\s*$`)
 )
 
+// PreflightMergeStatus reports, without writing anything, what a later
+// MergeBuild call for (osName, label) would do: SkippedIdentical if
+// config.yaml already has an identical entry, SkippedDiffers if it already
+// has a different one, or Merged if there's no entry yet (i.e. a real merge
+// would happen on a successful build). Intended for build-one
+// -add-if-successful to warn upfront when the merge is already known to be a
+// no-op, rather than only reporting that after a full (possibly hours-long)
+// build.
+func PreflightMergeStatus(dir, osName, label string, build Build) (MergeStatus, error) {
+	mainCfg, err := Load(dir, "")
+	if err != nil {
+		return 0, fmt.Errorf("loading %s: %w", DefaultConfigFile, err)
+	}
+	status, _ := checkMergeStatus(mainCfg, osName, label, build)
+	return status, nil
+}
+
+// checkMergeStatus reports whether (osName, label) already exists in
+// mainCfg, and if so whether it matches build exactly. mergeable is true only
+// when no entry exists yet, i.e. when MergeBuild should proceed to insert
+// one; status is only meaningful when mergeable is false.
+func checkMergeStatus(mainCfg *Config, osName, label string, build Build) (status MergeStatus, mergeable bool) {
+	existing, ok := mainCfg.Build(osName, label)
+	if !ok {
+		return Merged, true
+	}
+	if reflect.DeepEqual(existing, build) {
+		return SkippedIdentical, false
+	}
+	return SkippedDiffers, false
+}
+
 // MergeBuild folds a validated build entry for (osName, label) into
 // config.yaml, preserving everything else in the file byte-for-byte. It is
 // used by `build-one -c <alt> -add-if-successful` once a full build of an
@@ -70,11 +102,8 @@ func MergeBuild(dir, osName, label string, build Build, now time.Time) (MergeSta
 		return 0, fmt.Errorf("loading %s: %w", DefaultConfigFile, err)
 	}
 
-	if existing, ok := mainCfg.Build(osName, label); ok {
-		if reflect.DeepEqual(existing, build) {
-			return SkippedIdentical, nil
-		}
-		return SkippedDiffers, nil
+	if status, mergeable := checkMergeStatus(mainCfg, osName, label, build); !mergeable {
+		return status, nil
 	}
 	if _, ok := mainCfg.config.OSes[osName]; !ok {
 		return 0, fmt.Errorf("OS %q has no section in %s; add it manually first", osName, DefaultConfigFile)

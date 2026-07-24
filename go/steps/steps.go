@@ -346,7 +346,7 @@ func (r *Runner) InstallSRPM() error {
 		if err := os.MkdirAll(r.srpmsDir(), 0o755); err != nil {
 			return err
 		}
-		if err := runIn(r.srpmsDir(), "curl", "-sS", "-L", "-o", cached, url); err != nil {
+		if err := downloadFile(cached, url); err != nil {
 			return err
 		}
 	}

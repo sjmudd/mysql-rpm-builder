@@ -85,6 +85,7 @@ func BuildOne(osName, label string, opts Options) int {
 		if n := cfg.BuildCount(); n != 1 {
 			logx.Logf("- warning: %s defines %d build entries; -add-if-successful expects exactly 1", opts.ConfigFile, n)
 		}
+		logPreflightMergeStatus(dir, osName, label, resolved.Build)
 	}
 
 	logFile := filepath.Join(dir, "log", fmt.Sprintf("build-one.%s__%s__%s__%s.log", osName, label, code, date))
@@ -183,6 +184,35 @@ func BuildOne(osName, label string, opts Options) int {
 
 	logx.Logf("exit status %d (%s) for %sbuild of %s on %s", rc, status, noopText, label, osName)
 	return rc
+}
+
+// logPreflightMergeStatus warns upfront, before the (possibly hours-long)
+// build even starts, when config.yaml already has an entry for (osName,
+// label): the same check MergeBuild would do after a successful build, run
+// early so the user isn't left to notice it only once the build has
+// finished. Whether the
+// entry looks identical or different is only a hint from a struct-level
+// comparison (e.g. a reordered packages list already counts as "different"
+// even though it may be logically the same) -- the user still needs to
+// eyeball it and, if it's not actually the same, remove it from config.yaml
+// so a later successful build can merge the corrected entry. It never
+// affects whether the build runs.
+func logPreflightMergeStatus(dir, osName, label string, build config.Build) {
+	status, err := config.PreflightMergeStatus(dir, osName, label, build)
+	switch {
+	case err != nil:
+		logx.Logf("- warning: could not check %s for an existing %s/%s entry: %v",
+			config.DefaultConfigFile, osName, label, err)
+	case status == config.SkippedIdentical || status == config.SkippedDiffers:
+		hint := "looks different from"
+		if status == config.SkippedIdentical {
+			hint = "looks identical to"
+		}
+		logx.Logf("- note: %s already has a %s/%s entry, which %s this build's config; "+
+			"verify by eye whether it's logically the same and, if it isn't, remove that entry "+
+			"from %s so a successful build can merge the corrected one",
+			config.DefaultConfigFile, osName, label, hint, config.DefaultConfigFile)
+	}
 }
 
 // mergeConfig folds a just-validated build entry into config.yaml (see

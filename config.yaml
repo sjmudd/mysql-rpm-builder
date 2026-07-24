@@ -43,6 +43,10 @@ oses:
   #
   # Oracle Linux
   #
+
+  ol8:
+    builds:
+
   ol9:
     builds:
       # auto_install_dependencies: true is insufficient

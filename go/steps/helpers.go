@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/user"
@@ -45,6 +46,38 @@ func runShell(script string) error {
 		return fmt.Errorf("shell command failed: %w", err)
 	}
 	return nil
+}
+
+// downloadFile fetches url (following redirects, as net/http's default
+// client does) and writes it to dst. It downloads through dst+".download"
+// first and renames into place only once the transfer completes, so a
+// failed or interrupted download never leaves a corrupt file at dst for a
+// later run's cache check (see InstallSRPM) to mistake for a good download.
+func downloadFile(dst, url string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("downloading %s: %w", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("downloading %s: unexpected status %s", url, resp.Status)
+	}
+
+	tmp := dst + ".download"
+	out, err := os.Create(tmp)
+	if err != nil {
+		return fmt.Errorf("creating %s: %w", tmp, err)
+	}
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		_ = out.Close()
+		_ = os.Remove(tmp)
+		return fmt.Errorf("downloading %s: %w", url, err)
+	}
+	if err := out.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("downloading %s: %w", url, err)
+	}
+	return os.Rename(tmp, dst)
 }
 
 // lookupUser reports whether a system user exists.

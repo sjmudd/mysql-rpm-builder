@@ -48,8 +48,9 @@ type OSDef struct {
 // Packages are installed as root (steps.Runner.InstallPackages) before the
 // build. When AutoInstallDependencies is set, yum-builddep additionally
 // resolves the spec's BuildRequires in the separate install-builddeps step
-// (see steps.Runner.InstallBuildDeps); Packages then only needs the tooling
-// that is not a BuildRequires (e.g. wget, rpm-build).
+// (see steps.Runner.InstallBuildDeps); Packages then only needs whatever the
+// build actually requires but the spec's BuildRequires doesn't declare for
+// this OS (e.g. el8's mysql.spec needs `cpp`, for rpcgen, without saying so).
 type Build struct {
 	SRPM string `yaml:"srpm"`
 	// AutoInstallDependencies lets yum-builddep determine and install the
