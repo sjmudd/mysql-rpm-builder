@@ -55,10 +55,10 @@ type Build struct {
 	// SRPM is normally an https:// download URL (e.g. dev.mysql.com). It may
 	// also be a file:// URL, for a locally built src.rpm that was never
 	// published anywhere -- e.g. one produced by ./build-rpm-from-git under
-	// rpms_built_from_git/<os><major>__<label>/. steps.Runner.InstallSRPM
+	// built-from-git/<os><major>__<label>/. steps.Runner.InstallSRPM
 	// installs directly from a file:// path (no download/caching), and
 	// since install-srpm always runs inside the container, the path must be
-	// container-visible: /data/rpms_built_from_git/<os><major>__<label>/<name>.src.rpm,
+	// container-visible: /data/built-from-git/<os><major>__<label>/<name>.src.rpm,
 	// not a host-side relative path. See ol10-9.7.1-own-built-src-rpm.yaml
 	// for a worked example.
 	SRPM string `yaml:"srpm"`

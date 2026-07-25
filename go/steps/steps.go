@@ -211,8 +211,8 @@ func rpmbuildHome() (string, error) {
 // installs directly from that path instead -- it is never cached under
 // SRPMS/, since it isn't a download in the first place. This runs inside
 // the container, so the path must be container-visible, not host-relative:
-// file:///data/rpms_built_from_git/<os><major>__<label>/<name>.src.rpm, not
-// file://rpms_built_from_git/... (see config.Build.SRPM).
+// file:///data/built-from-git/<os><major>__<label>/<name>.src.rpm, not
+// file://built-from-git/... (see config.Build.SRPM).
 func (r *Runner) InstallSRPM() error {
 	url := r.Cfg.Build.SRPM
 	if path, ok := strings.CutPrefix(url, "file://"); ok {

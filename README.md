@@ -152,7 +152,7 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
   one produced by `./build-rpm-from-git` (see below). `install-srpm` then
   installs directly from that path (no download/caching involved). Since
   `install-srpm` always runs *inside* the container, the path must be
-  container-visible: `file:///data/rpms_built_from_git/<os><major>__<tag>/<name>.src.rpm`,
+  container-visible: `file:///data/built-from-git/<os><major>__<tag>/<name>.src.rpm`,
   not a host-relative one.
 
 ### Adding a build
@@ -458,12 +458,45 @@ output (`-no-bison`: `mysql.spec` requires bison unconditionally, so a real
 `rpmbuild -ba` regenerates `sql_yacc.cc`/etc. itself regardless of what the
 tarball ships — see `docs/srpm-tarball-differs-from-git-tag.md`), packages
 the source tarball via CPack, and runs `rpmbuild -bs`. The resulting
-src.rpm lands in `rpms_built_from_git/<os><major>__<tag>/`.
+src.rpm lands in `built-from-git/<os><major>__<tag>/`.
 
-**Current scope: src.rpm only, `ol10`** — it doesn't (yet) run `rpmbuild -ba`
-to produce binary RPMs directly, and `git-build-deps.yaml` (the bootstrap
-package list needed just to get `cmake configure` running at all, before any
-real spec exists to run `yum-builddep` against) only has an `ol10` entry.
+Two gaps between a plain git checkout and what `cmake configure`/`rpmbuild
+-bs` actually need are handled automatically, both without requiring any
+network access from inside the container beyond a native Go download:
+
+- **Boost.** MySQL 9.x and 8.4.x both bundle a matching `boost_<ver>`
+  directory right in the source tree (`extra/boost/`, confirmed for
+  `8.4.10`: `boost_1_84_0`); 8.0.x doesn't — it expects boost fetched
+  separately, and the required version+URL is only knowable from
+  `cmake/boost.cmake` in the freshly cloned tree (not from `mysql.spec`,
+  which doesn't exist yet at this point — it's generated *by* this same
+  `cmake configure` run). When the bundled directory isn't found, it's
+  fetched from the URL `cmake/boost.cmake` names and cached under
+  `boost-cache/` (persists across runs, since successive 8.0.x point
+  releases are likely to keep pinning the same boost version) — `cmake
+  configure` itself then extracts the cached tarball in place, same as it
+  would for a manually pre-downloaded one.
+- **`filter-provides.sh`/`filter-requires.sh`.** `mysql-8.0.x`'s spec (only
+  — 8.4.x/9.x's spec.in doesn't declare these at all) references these two
+  as bare-filename `Source:` entries, but they don't exist anywhere in the
+  public git tree — part of Oracle's private packaging pipeline, same theme
+  as `docs/srpm-tarball-differs-from-git-tag.md`. Verbatim copies (extracted
+  from Oracle's official src.rpm, sha256-verified) are checked into
+  `go/gitsteps/assets/` and written into `SOURCES/` only when the spec
+  actually declares them and only if not already present — never
+  overwriting a real file.
+
+**Current scope: src.rpm only** — it doesn't (yet) run `rpmbuild -ba` to
+produce binary RPMs directly. `git-build-deps.yaml` (the bootstrap package
+list needed just to get `cmake configure` running at all, before any real
+spec exists to run `yum-builddep` against) has `ol9` and `ol10` entries; el8
+isn't set up yet. The compiler toolset (`gcc-toolset-<N>`, when the base OS's
+own compiler is too old) is a per-`(os, tag)` override in that same file,
+determined empirically per tag rather than assumed — see the file's own
+header comment for the discovery method. Confirmed working end-to-end:
+`ol10`/`mysql-9.7.1` (no toolset override needed), `ol9`/`mysql-9.7.1`
+(`gcc-toolset-14`), `ol9`/`mysql-8.0.46` and `ol9`/`mysql-8.4.10` (both
+`gcc-toolset-12`).
 
 To confirm a git-built src.rpm is actually usable by the normal
 `rpmbuild -ba` pipeline, point a `config.yaml`-shaped `-c` file's `srpm:` at
@@ -475,7 +508,7 @@ oses:
   ol10:
     builds:
       9.7.1-from-git:
-        srpm: file:///data/rpms_built_from_git/ol10__mysql-9.7.1/mysql-community-9.7.1-1.el10.src.rpm
+        srpm: file:///data/built-from-git/ol10__mysql-9.7.1/mysql-community-9.7.1-1.el10.src.rpm
         auto_install_dependencies: true
 ```
 

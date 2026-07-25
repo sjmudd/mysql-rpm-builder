@@ -1,9 +1,8 @@
-# Bootstrap package list for the git-* subcommands (git-build-one / git-run /
-# git-clone / git-configure / git-assemble-srpm): just enough for `cmake
-# configure` to succeed against a plain git checkout, before any real
-# mysql.spec exists to run yum-builddep against. Required per OS -- there is
-# no spec to derive this list from at this point, so it can't be
-# auto-determined; see go/gitsteps for how it's loaded and used.
+# Bootstrap package list for the git-* subcommands 
+# enough for `cmake configure` to succeed against a plain git checkout,
+# before any real mysql.spec exists to run yum-builddep against.
+# Required per OS -- there is no spec to derive this list from at this point,
+# so it can't be auto-determined; see go/gitsteps for how it's loaded and used.
 #
 # libaio-devel is a hard `cmake configure` requirement on Linux (see
 # cmake/build_configurations/mysql_release.cmake), not an optional feature
@@ -60,14 +59,21 @@ oses:
         packages: [gcc-toolset-14-annobin-annocheck,
           gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils,
           gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++]
-      # Untested: run `./build-rpm-from-git -no-bison ol9 mysql-8.0.45` with
-      # this list empty first, then fill in whatever gcc-toolset-<N> the
-      # resulting CMake error names -- 8.0.x is a different, likely older,
-      # major branch than 9.7.1 and there's no reason to assume it needs the
-      # same toolset version (see this file's header comment on why that's
-      # never safe to assume).
-      mysql-8.0.45:
-        packages: []
+      # Confirmed by testing that the following packages are needed
+      # for the build to generate a src rpm.
+      mysql-8.0.46:
+        packages: [gcc-toolset-12-annobin-annocheck,
+          gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils,
+          gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++]
+      # Confirmed empirically 2026-07-25 per this file's header-comment
+      # method: an empty-list run's CMake error named these five exactly --
+      # same gcc-toolset-12 as 8.0.46 (8.4 is the direct LTS successor to
+      # the 8.0 branch, so this isn't too surprising in hindsight, but it
+      # was still verified rather than assumed).
+      mysql-8.4.10:
+        packages: [gcc-toolset-12-annobin-annocheck,
+          gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils,
+          gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++]
   ol10:
     packages: [bison, cmake, cyrus-sasl-devel, gcc, gcc-c++, git, krb5-devel,
       libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel,

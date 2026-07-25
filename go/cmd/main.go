@@ -430,7 +430,7 @@ In-container individual steps (rpmbuild user):
   git-clone [flags] <tag> | git-configure [flags] <tag> | git-assemble-srpm [flags] <tag>
 
 Flags:
-  -o dir                         output directory for the produced src.rpm (default rpms_built_from_git)
+  -o dir                         output directory for the produced src.rpm (default built-from-git)
   -no-bison                      skip the pre-generated bison output (see docs/srpm-tarball-differs-from-git-tag.md)
 
 Other:
