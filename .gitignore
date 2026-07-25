@@ -4,5 +4,6 @@
 SRPMS/
 built/
 log/
+generated_SRPMS/
 mysql-rpm-builder
 !cmd/mysql-rpm-builder

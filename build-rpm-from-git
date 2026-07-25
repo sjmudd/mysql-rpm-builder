@@ -1,0 +1,364 @@
+#!/usr/bin/env bash
+# build-rpm-from-git -- build a mysql src.rpm from a mysql-server git
+# tag, without ever downloading Oracle's official src.rpm.
+#
+# Why this exists: the current Go tool's whole workflow starts from an
+# official src.rpm download (SRPMS/, an external source) and rebuilds it
+# into a binary RPM. This script instead produces the src.rpm itself, from
+# the git tag, so that first step can eventually be skipped or substituted
+# -- either to avoid depending on Oracle's download at all, or for a tag
+# that has no official src.rpm published yet.
+#
+# How build dependencies are resolved:
+# - use of common mysql-rpm-builder steps to setup a container for
+#   building the srpms:
+#   1. `install-packages -c git-build-deps.yaml git-bootstrap` installs a
+#      toolchain (cmake, bison, a compiler, openssl/curl/ncurses/libaio-
+#      devel, ...) -- just enough for `cmake` configure to run. See
+#      git-build-deps.yaml for the exact list and why each package needed
+#      to be there (libaio-devel, in particular, is a hard `cmake
+#      configure` requirement, not an optional feature quietly skipped
+#      when absent). Anything else MySQL's cmake needs is either bundled
+#      under extra/ (protobuf, zlib, zstd, boost, ...) or an optional
+#      feature that cmake disables gracefully if its headers are missing
+#      (which has no effect on this script's output -- see below).
+#   2. Clone the tag and run `cmake configure`. This is what produces the
+#      real packaging/rpm-oel/mysql.spec (via CMakeLists.txt's own
+#      CONFIGURE_FILE(mysql.spec.in ...)) -- nothing here hand-substitutes
+#      that template.
+#   3. Run `yum-builddep` against that real generated spec (as root) --
+#      the same mechanism the existing install-builddeps step uses, just
+#      pointed at our own cmake output instead of an official download.
+#      This tops the environment up with whatever full BuildRequires the
+#      spec declares (patchelf, annobin, ...) that step 1 didn't need for
+#      cmake configure itself. Harmless even though this script's own
+#      output (a source rpm) doesn't need them: those extra packages only
+#      matter for a full binary build, which this groundwork is meant to
+#      make possible later without needing an official src.rpm.
+# Whether step 1's list makes cmake disable some optional feature (e.g.
+# FIDO2 support, if libfido2-devel weren't present) would have no effect
+# on this script's output: the generated mysql.spec's BuildRequires text
+# doesn't change based on what got detected, and none of Docs/INFO_SRC,
+# the pre-generated bison output, or `rpmbuild -bs` itself depend on which
+# optional server features got enabled during this configure pass.
+#
+# Repo setup (enabling CodeReady Builder / EPEL so packages like
+# libtirpc-devel, libfido2-devel resolve at all) and the rpmbuild user/
+# persisted directories also reuse the existing mysql-rpm-builder binary's
+# setup-repos/create-user steps against images.yaml -- this is local repo
+# configuration, not an external download, and avoids duplicating that
+# logic.
+#
+# See docs/srpm-tarball-differs-from-git-tag.md for why building from the
+# git tag's tree instead of Oracle's tarball is fine: mysql.spec always
+# requires bison unconditionally, so the two extra files the official
+# tarball carries (Docs/INFO_SRC, pre-generated bison output) are never
+# actually consumed by the RPM build path anyway -- this script reproduces
+# them itself via the same cmake targets the official build silently relies
+# on.
+#
+# -no-bison: the pre-generated bison output (sql_yacc.cc/.h,
+# sql_hints.yy.cc/.h) exists so a *source-only* build can skip running
+# bison. It is pointless weight for an RPM build specifically: mysql.spec's
+# BuildRequires always pulls in bison unconditionally, and cmake's GenBison_*
+# targets are wired as always-run custom commands (their .yy/.yy_hints
+# input never changes), so the real rpmbuild -ba regenerates these files
+# from scratch regardless of what the tarball ships -- whatever this script
+# pre-generates is simply discarded/overwritten. Pass -no-bison to skip
+# generating and packaging that pre-generated output (INFO_SRC is still
+# generated -- that one IS consumed, via %doc in the spec). This is
+# meant to produce evidence for an upstream bug/feature request to drop
+# the pre-generated bison files from the tarball's RPM-build path and ship
+# only what's actually needed.
+#
+# See docs/el8-el9-missing-fido-builddeps-bug.md: el8/el9 specs are
+# missing libfido2-devel/libudev-devel from BuildRequires. Not an issue on
+# el10 (this script's current focus), where the spec declares them
+# correctly; el8/el9 would need that workaround applied here too.
+#
+# Usage (host):
+#   ./build-rpm-from-git [-no-bison] <os-label> <tag>
+# Example:
+#   ./build-rpm-from-git ol10 mysql-9.7.1
+#   ./build-rpm-from-git -no-bison ol10 mysql-9.7.1
+#
+# Output: generated_SRPMS/*.src.rpm, under this repo (the whole repo is
+# bind-mounted into the container at /data, so output has to land
+# somewhere under here to be visible on the host afterwards). Deliberately
+# not SRPMS/ -- that directory is reserved for externally-downloaded
+# official src.rpms; nothing here downloads one.
+#
+# <os-label> must exist in images.yaml (ol10, almalinux9, rocky10, ...) AND
+# have a matching "git-bootstrap" entry in git-build-deps.yaml (currently
+# only ol10 -- add an entry there before pointing this at another OS).
+#
+# Re-execs itself inside the resolved container with --in-container, then
+# hands off to the rpmbuild user with --in-container-configure and
+# --in-container-finish.
+#
+# Caveat: WITH_BOOST below assumes the 9.x-style layout where boost is
+# bundled under extra/boost/ in the source tree itself. 8.0.x/8.4.x pull
+# boost as a separate Source instead -- this script does not handle that
+# layout yet.
+#
+# Logging: every line goes through log()/stage_start()/stage_finish() below,
+# which format like go/logx.Logf ("<UTC ts> <host> <prog>[<pid>]: <msg>")
+# so this script's output reads the same as the Go tool's, and stage_start/
+# stage_finish bracket each long-running phase (clone, cmake configure,
+# yum-builddep, INFO_SRC, bison, CPack package_source, rpmbuild -bs) with an
+# explicit "done (Ns)" line -- the point being to see where build time goes
+# without doing timestamp arithmetic by hand. The host-side run additionally
+# tees all of this (including everything printed by the container hops) to
+# log/build-rpm-from-git.<os-label>__<tag>__<code>__<date>.log, and appends a
+# one-line summary to log/build-rpm-from-git.build_status on exit --
+# mirroring go/host.BuildOne's logFile/appendBuildStatus, since neither
+# existed here before.
+
+set -euo pipefail
+
+PROG="$(basename "$0")"
+
+ts() { date -u +%Y-%m-%dT%H:%M:%S; }
+# -s (short): the go/logx equivalent uses the full os.Hostname(), but in a
+# container/host with a long FQDN that makes every log line noisy -- prefer
+# the short form here.
+hostshort() { hostname -s 2>/dev/null || echo UNKNOWNHOST; }
+
+# log/note/err mirror go/logx's "<ts> <host> <prog>[<pid>]: <msg>" prefix.
+# note() is the "- <msg>" sub-bullet convention steps.go uses for detail
+# lines under a "### <stage>" header.
+log() { printf '%s %s %s[%d]: %s\n' "$(ts)" "$(hostshort)" "${PROG}" "$$" "$*"; }
+note() { log "- $*"; }
+err() { printf '%s %s %s[%d]: ERROR: %s\n' "$(ts)" "$(hostshort)" "${PROG}" "$$" "$*" >&2; }
+die() { err "$*"; exit 1; }
+
+# Brackets one long-running phase with a "### <name>" start line and a
+# "### <name>: done (Ns)" line. Not reentrant/nested -- this script's phases
+# always run strictly one after another, so a single pair of globals is
+# enough (no stack needed).
+STAGE_NAME=""
+STAGE_T0=0
+stage_start() {
+  STAGE_NAME="$*"
+  STAGE_T0=$(date +%s)
+  log "### ${STAGE_NAME}"
+}
+stage_finish() {
+  log "### ${STAGE_NAME}: done ($(( $(date +%s) - STAGE_T0 ))s)"
+}
+
+# Deterministic (not mktemp) paths under the rpmbuild user's home: root and
+# the rpmbuild user both need to agree on where the clone/build tree live
+# across separate `su` hops, and the container is --rm anyway so there is
+# no reuse/collision concern.
+clone_dir() { echo "/home/rpmbuild/git-build/mysql-$1"; }
+build_dir() { echo "/home/rpmbuild/git-build/build-mysql-$1"; }
+
+if [ "${1:-}" = "--in-container" ]; then
+  shift
+  TAG="$1"; EL_MACRO="$2"; SKIP_BISON="${3:-0}"
+  VERSION="${TAG#mysql-}"
+  BIN=/data/mysql-rpm-builder
+  SRC_DIR="$(clone_dir "${VERSION}")"
+  BUILD_DIR="$(build_dir "${VERSION}")"
+  # git-build-deps.yaml's "git-bootstrap" label -- see that file for what
+  # it installs and why. All package installation below goes through the
+  # existing mysql-rpm-builder steps (backed by images.yaml/this file),
+  # never a raw dnf/yum call in this script.
+  GIT_CFG=git-build-deps.yaml
+  GIT_LABEL=git-bootstrap
+
+  stage_start "container: base tooling + repo setup + toolchain via ${GIT_CFG} (no src.rpm download)"
+  "${BIN}" record-init -c "${GIT_CFG}" "${GIT_LABEL}"
+  "${BIN}" refresh -c "${GIT_CFG}" "${GIT_LABEL}"
+  "${BIN}" setup-repos -c "${GIT_CFG}" "${GIT_LABEL}"
+  "${BIN}" install-packages -c "${GIT_CFG}" "${GIT_LABEL}"
+  "${BIN}" fix-annobin -c "${GIT_CFG}" "${GIT_LABEL}"
+  "${BIN}" os-tweaks -c "${GIT_CFG}" "${GIT_LABEL}"
+  "${BIN}" create-user -c "${GIT_CFG}" "${GIT_LABEL}"
+  stage_finish
+
+  log "container: cloning + configuring as the rpmbuild user (root never touches the checked-out tree)"
+  su - rpmbuild -c "/data/$(basename "$0") --in-container-configure '${TAG}' '${VERSION}'"
+
+  GENERATED_SPEC="${BUILD_DIR}/packaging/rpm-oel/mysql.spec"
+  [ -f "${GENERATED_SPEC}" ] || die "${GENERATED_SPEC} was not generated by cmake -- not a LINUX_RHEL host?"
+  stage_start "container: resolving remaining BuildRequires from the cmake-generated ${GENERATED_SPEC}"
+  yum-builddep -y "${GENERATED_SPEC}"
+  stage_finish
+
+  log "container: finishing the build as the rpmbuild user"
+  su - rpmbuild -c "/data/$(basename "$0") --in-container-finish '${VERSION}' '${EL_MACRO}' '${SKIP_BISON}'"
+
+  # Deliberately not SRPMS/ -- that directory holds externally-downloaded
+  # official src.rpms; this is our own output.
+  mkdir -p /data/generated_SRPMS
+  cp ~rpmbuild/rpmbuild/SRPMS/*.src.rpm /data/generated_SRPMS/
+  log "container: done: $(ls /data/generated_SRPMS/*.src.rpm)"
+  exit 0
+fi
+
+if [ "${1:-}" = "--in-container-configure" ]; then
+  shift
+  TAG="$1"; VERSION="$2"
+  SRC_DIR="$(clone_dir "${VERSION}")"
+  BUILD_DIR="$(build_dir "${VERSION}")"
+
+  # --depth 1 fetches only the tree at that one commit, not the repo's
+  # 20+ years of history. --branch works for either a branch or a tag
+  # name and implies --single-branch. --no-tags additionally skips
+  # fetching every other tag's ref advertisement (mysql-server has
+  # thousands), which --branch alone does not suppress.
+  stage_start "clone: ${TAG} into ${SRC_DIR} (shallow, single tag only)"
+  mkdir -p "$(dirname "${SRC_DIR}")"
+  git clone --depth 1 --no-tags --branch "${TAG}" \
+    https://github.com/mysql/mysql-server.git "${SRC_DIR}"
+  stage_finish
+
+  BOOST_DIR="$(find "${SRC_DIR}/extra/boost" -maxdepth 1 -type d -name 'boost_*' 2>/dev/null | head -1)"
+  [ -n "${BOOST_DIR}" ] || die "no bundled extra/boost/boost_* found -- see the layout caveat at the top of this script"
+
+  mkdir -p "${BUILD_DIR}"
+  cd "${BUILD_DIR}"
+
+  stage_start "configure: cmake configure (produces packaging/rpm-oel/mysql.spec)"
+  cmake "${SRC_DIR}" \
+    -DBUILD_CONFIG=mysql_release \
+    -DINSTALL_LAYOUT=RPM \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DWITH_BOOST="${BOOST_DIR}" \
+    -DWITH_SSL=system \
+    -DWITH_CURL=system \
+    -DWITH_SYSTEMD=1 \
+    -DDOWNLOAD_BOOST=0
+  stage_finish
+
+  GENERATED_SPEC="${BUILD_DIR}/packaging/rpm-oel/mysql.spec"
+  [ -f "${GENERATED_SPEC}" ] || die "mysql.spec was not generated by cmake -- not a LINUX_RHEL host?"
+  exit 0
+fi
+
+if [ "${1:-}" = "--in-container-finish" ]; then
+  shift
+  VERSION="$1"; EL_MACRO="$2"; SKIP_BISON="${3:-0}"
+  SRC_DIR="$(clone_dir "${VERSION}")"
+  BUILD_DIR="$(build_dir "${VERSION}")"
+  cd "${BUILD_DIR}"
+
+  stage_start "info_src: generating Docs/INFO_SRC"
+  cmake --build . --target INFO_SRC
+  cp "${BUILD_DIR}/Docs/INFO_SRC" "${SRC_DIR}/Docs/INFO_SRC"
+  stage_finish
+
+  if [ "${SKIP_BISON}" = "1" ]; then
+    note "-no-bison: skipping the pre-generated bison output (sql_yacc.cc/.h, sql_hints.yy.cc/.h) --"
+    note "  mysql.spec requires bison unconditionally, so the real rpmbuild -ba regenerates these"
+    note "  itself; the tarball will only carry INFO_SRC on top of the plain git tree"
+  else
+    stage_start "bison: generating pre-generated bison output"
+    cmake --build . --target GenBison_mysql GenBison_hints
+    cp "${BUILD_DIR}/sql/sql_yacc.cc" "${BUILD_DIR}/sql/sql_yacc.h" "${SRC_DIR}/sql/"
+    cp "${BUILD_DIR}/sql/sql_hints.yy.cc" "${BUILD_DIR}/sql/sql_hints.yy.h" "${SRC_DIR}/sql/"
+    stage_finish
+  fi
+
+  # Also what excludes the vendored *Makefile*s the official tarball
+  # excludes, via CPACK_SOURCE_IGNORE_FILES.
+  stage_start "package_source: packaging source tarball via CPack"
+  cmake --build . --target package_source
+  stage_finish
+  TARBALL="${BUILD_DIR}/mysql-${VERSION}.tar.gz"
+  [ -f "${TARBALL}" ] || die "expected ${TARBALL} not found"
+
+  GENERATED_SPEC="${BUILD_DIR}/packaging/rpm-oel/mysql.spec"
+
+  stage_start "assemble_srpm: rpmbuild -bs"
+  mkdir -p ~/rpmbuild/{SOURCES,SPECS,SRPMS}
+  cp "${TARBALL}" ~/rpmbuild/SOURCES/
+  cp "${GENERATED_SPEC}" ~/rpmbuild/SPECS/mysql.spec
+  rpmbuild --define "${EL_MACRO} 1" -bs ~/rpmbuild/SPECS/mysql.spec
+  stage_finish
+  exit 0
+fi
+
+# ---- host side ----
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+USAGE="usage: $0 [-no-bison] <os-label> <tag>"
+
+SKIP_BISON=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -no-bison)
+      SKIP_BISON=1
+      shift
+      ;;
+    -*)
+      echo "unknown option: $1" >&2
+      echo "${USAGE}" >&2
+      exit 1
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+OS_LABEL="${1:?${USAGE}}"
+TAG="${2:?${USAGE}}"
+
+# Minimal images.yaml lookup, assuming the current 2-space/4-space layout:
+#   oses:
+#     <label>:
+#       image: <image>
+IMAGE="$(awk -v label="${OS_LABEL}:" '
+  $1 == label { infield=1; next }
+  infield && /^  [A-Za-z0-9_]+:/ { exit }
+  infield && /^    image:/ { print $2; exit }
+' "${HERE}/images.yaml")"
+[ -n "${IMAGE}" ] || die "os label '${OS_LABEL}' not found in images.yaml"
+
+EL_MACRO="el$(echo "${OS_LABEL}" | grep -oE '[0-9]+$')"
+[ -n "${EL_MACRO#el}" ] || die "could not derive el<N> macro from '${OS_LABEL}'"
+
+# Tee everything from here on (our own log lines plus every subprocess's
+# stdout/stderr, including whatever the container hops print over docker's
+# inherited fds) to a persistent per-run logfile -- go/logx.SetTee does the
+# same for build-one, but this script had no persisted log at all before.
+RUN_CODE="$(printf '%05d' $((RANDOM % 100000)))"
+RUN_DATE="$(date -u +%Y%m%d.%H%M%S)"
+mkdir -p "${HERE}/log"
+LOGFILE="${HERE}/log/build-rpm-from-git.${OS_LABEL}__${TAG}__${RUN_CODE}__${RUN_DATE}.log"
+exec > >(tee -a "${LOGFILE}") 2>&1
+note "logging to ${LOGFILE}"
+
+HOST_START=$(date +%s)
+finish_status() {
+  local rc=$? status=OK
+  [ "${rc}" -ne 0 ] && status=FAILED
+  local elapsed=$(( $(date +%s) - HOST_START ))
+  log "### exit status ${rc} (${status}) for build of ${TAG} on ${OS_LABEL}, elapsed ${elapsed}s"
+  printf '%s %s %s[%d]: os=%s, tag=%s, image=%s, skip_bison=%s, status=%s, rc=%d, elapsed=%d\n' \
+    "$(ts)" "$(hostshort)" "${PROG}" "$$" "${OS_LABEL}" "${TAG}" "${IMAGE}" "${SKIP_BISON}" "${status}" "${rc}" "${elapsed}" \
+    >> "${HERE}/log/build-rpm-from-git.build_status"
+}
+trap finish_status EXIT
+
+log "build-rpm-from-git: ${TAG} on ${OS_LABEL} (image ${IMAGE}, --define ${EL_MACRO} 1$( [ "${SKIP_BISON}" = "1" ] && echo ", -no-bison" ))"
+
+stage_start "host: building the mysql-rpm-builder binary"
+( cd "${HERE}" && go build -o mysql-rpm-builder ./go/cmd )
+stage_finish
+
+stage_start "host: docker run (${IMAGE})"
+docker run --rm \
+  --network=host \
+  --hostname=buildhost \
+  -v "${HERE}:/data" \
+  -w /data \
+  "${IMAGE}" \
+  /data/build-rpm-from-git --in-container "${TAG}" "${EL_MACRO}" "${SKIP_BISON}"
+stage_finish
+
+log "done. src.rpm(s) in ${HERE}/generated_SRPMS:"
+ls -la "${HERE}/generated_SRPMS"

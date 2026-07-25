@@ -1,0 +1,48 @@
+# Alternate config.yaml, used only by build-rpm-from-git (`-c` flag),
+# to install the toolchain `cmake configure` needs via the existing
+# mysql-rpm-builder install-packages step -- rather than a raw dnf/yum
+# call in that shell script -- so package installation stays centralized
+# through the one tool that already knows how to talk to yum/dnf.
+#
+# `srpm` is a required field (config.Resolve validates it's non-empty) but
+# is never used for this label: build-rpm-from-git never calls
+# install-srpm here, since its whole point is to build the src.rpm from a
+# git clone instead of an official download.
+#
+# libaio-devel is a hard `cmake configure` requirement on Linux (see
+# cmake/build_configurations/mysql_release.cmake), not an optional feature
+# quietly skipped when absent. The rest of this list mirrors the official
+# spec's non-packaging-only BuildRequires (skipping patchelf/dwz/annobin*/
+# elfutils, which matter only for binary-RPM stripping, not for cmake
+# configure or `rpmbuild -bs`) -- build-rpm-from-git separately runs
+# yum-builddep against its own cmake-generated mysql.spec to top up
+# anything this list misses.
+oses:
+  ol10:
+    builds:
+      git-bootstrap:
+        srpm: unused
+        packages:
+          - git
+          - rpm-build
+          - yum-utils
+          - cmake
+          - bison
+          - gcc
+          - gcc-c++
+          - make
+          - openssl-devel
+          - libcurl-devel
+          - ncurses-devel
+          - libaio-devel
+          - numactl-devel
+          - krb5-devel
+          - cyrus-sasl-devel
+          - openldap-devel
+          - systemd
+          - pkgconfig(systemd)
+          - libfido2-devel
+          - libudev-devel
+          - libquadmath-devel
+          - libtirpc-devel
+          - rpcgen
