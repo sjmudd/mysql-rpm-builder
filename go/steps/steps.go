@@ -15,10 +15,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/sjmudd/mysql-rpm-builder/go/config"
 	"github.com/sjmudd/mysql-rpm-builder/go/logx"
+	"github.com/sjmudd/mysql-rpm-builder/go/osprep"
 	"github.com/sjmudd/mysql-rpm-builder/go/osrelease"
 )
 
@@ -97,7 +99,7 @@ func (r *Runner) builtDir() string { return filepath.Join(r.DataDir, "built") }
 // BaseBuildPackages are required for every build regardless of (os, version),
 // so they are installed unconditionally in Refresh rather than listed in each
 // config entry. util-linux provides 'su'.
-var BaseBuildPackages = []string{"rpm-build", "util-linux"}
+var BaseBuildPackages = osprep.BaseBuildPackages
 
 // RecordInitialPackages captures the base container image's package list before
 // any packages are changed, writing a sorted listing to rpm-qa.init.<runLabel>.
@@ -113,17 +115,7 @@ func (r *Runner) RecordInitialPackages() error {
 // Refresh updates system packages, ensures dnf config-manager is available, and
 // installs the base build tooling that every build needs (see BaseBuildPackages).
 // It runs right after the initial yum update, so these installs always succeed.
-func (r *Runner) Refresh() error {
-	logx.Log("### refresh: ensuring system packages are up to date")
-	if err := run("yum", "update", "-y"); err != nil {
-		return err
-	}
-	if err := run("yum", "install", "-y", "dnf-command(config-manager)"); err != nil {
-		return err
-	}
-	logx.Logf("### refresh: installing base build tooling %v", BaseBuildPackages)
-	return run("yum", append([]string{"install", "-y"}, BaseBuildPackages...)...)
-}
+func (r *Runner) Refresh() error { return osprep.Refresh() }
 
 // SetupRepos installs the EPEL packages and enables the configured repos.
 //
@@ -131,27 +123,7 @@ func (r *Runner) Refresh() error {
 // Oracle *_developer_EPEL repos) are only defined once the corresponding EPEL
 // release package is present. Repos in Enable that already exist in the base
 // image (e.g. codeready_builder) can be enabled either way.
-func (r *Runner) SetupRepos() error {
-	repos := r.Cfg.Repos
-	logx.Logf("### setup-repos: epel=%v enable=%v", repos.EPELPackages, repos.Enable)
-	for _, pkg := range repos.EPELPackages {
-		if pkg == "" {
-			continue
-		}
-		if err := run("dnf", "install", "-y", pkg); err != nil {
-			return err
-		}
-	}
-	for _, repo := range repos.Enable {
-		if repo == "" {
-			continue
-		}
-		if err := run("yum", "config-manager", "--set-enabled", repo); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+func (r *Runner) SetupRepos() error { return osprep.SetupRepos(r.Cfg.Repos) }
 
 // InstallPackages installs the explicitly listed build packages for this
 // (os, version) as root, before the build. With auto_install_dependencies this
@@ -163,14 +135,7 @@ func (r *Runner) InstallPackages() error {
 	if !b.ShouldInstallDependencies() && len(b.Packages) == 0 {
 		return fmt.Errorf("nothing to install for %s / %s: set auto_install_dependencies or list packages", r.osLabel(), r.Cfg.Label)
 	}
-
-	if len(b.Packages) > 0 {
-		logx.Logf("### install-packages: installing %d package(s)", len(b.Packages))
-		if err := run("yum", append([]string{"install", "-y"}, b.Packages...)...); err != nil {
-			return err
-		}
-	}
-	return nil
+	return osprep.InstallPackages(b.Packages)
 }
 
 // InstallBuildDeps resolves the src.rpm's BuildRequires as root with
@@ -190,7 +155,7 @@ func (r *Runner) InstallBuildDeps() error {
 		return nil
 	}
 	logx.Log("### install-builddeps: resolving build dependencies with yum-builddep")
-	if err := run("yum", "install", "-y", "yum-utils"); err != nil { // provides yum-builddep
+	if err := osprep.Run("yum", "install", "-y", "yum-utils"); err != nil { // provides yum-builddep
 		return err
 	}
 	home, err := buildUserRpmbuildHome()
@@ -202,7 +167,7 @@ func (r *Runner) InstallBuildDeps() error {
 	if err != nil {
 		return err
 	}
-	return runIn(specs, "yum-builddep", "-y", spec)
+	return osprep.RunIn(specs, "yum-builddep", "-y", spec)
 }
 
 // buildUserRpmbuildHome returns the build user's ~/rpmbuild tree, resolved via
@@ -216,110 +181,17 @@ func buildUserRpmbuildHome() (string, error) {
 	return filepath.Join(u.HomeDir, "rpmbuild"), nil
 }
 
-// FixAnnobin works around the gcc-toolset annobin plugin naming mismatch.
-//
-// gcc is invoked with the short plugin name "annobin" (via redhat-annobin-cc1),
-// so it looks for annobin.so / gcc-annobin.so in each gcc-toolset plugin dir.
-// Depending on the OS the plugin ships under a different real name and some of
-// these aliases are missing, which makes cmake's "is the C compiler working"
-// check fail with:
-//
-//	cc1: fatal error: inaccessible plugin file .../plugin/annobin.so
-//	expanded from short plugin name annobin: No such file or directory
-//
-// This has been seen on both el8 (CentOS 8, gcc-toolset-10/12; real object
-// annobin.so, gcc-annobin.so missing) and el9 (CentOS 9 / Oracle Linux 9,
-// gcc-toolset-12; real object gts-annobin.so.0.0.0, all aliases missing).
-// Toolsets that already ship the aliases (e.g. gcc-toolset-14) and OSes with
-// plain gcc and no toolset dirs (e.g. el10) are left untouched. Ported from the
-// legacy ossetup scripts. See https://bugs.mysql.com/bug.php?id=108049.
-func (r *Runner) FixAnnobin() error {
-	// Aliases gcc may resolve the "annobin" short name to.
-	aliases := []string{"annobin.so", "annobin.so.0.0.0", "gcc-annobin.so", "gcc-annobin.so.0.0.0"}
-	// Candidate real plugin objects, newest naming first: gts-annobin.so.0.0.0
-	// on el9, plain annobin.so* on el8.
-	realNames := []string{"gts-annobin.so.0.0.0", "annobin.so.0.0.0", "annobin.so"}
-
-	// e.g. /opt/rh/gcc-toolset-12/root/usr/lib/gcc/x86_64-redhat-linux/12/plugin.
-	// Glob keeps this arch- and toolset-version-agnostic.
-	dirs, err := filepath.Glob("/opt/rh/gcc-toolset-*/root/usr/lib/gcc/*/*/plugin")
-	if err != nil {
-		return err
-	}
-	if len(dirs) == 0 {
-		logx.Log("### fix-annobin: no gcc-toolset plugin dirs (nothing to do)")
-		return nil
-	}
-	for _, dir := range dirs {
-		// Locate the real (regular-file) plugin object in this toolset.
-		var realObj string
-		for _, n := range realNames {
-			if fi, err := os.Lstat(filepath.Join(dir, n)); err == nil && fi.Mode().IsRegular() {
-				realObj = n
-				break
-			}
-		}
-		if realObj == "" {
-			continue // toolset without the annobin plugin
-		}
-		for _, a := range aliases {
-			if a == realObj {
-				continue
-			}
-			link := filepath.Join(dir, a)
-			if _, err := os.Lstat(link); err == nil {
-				continue // alias already present
-			}
-			logx.Logf("### fix-annobin: symlinking %s -> %s", link, realObj)
-			if err := os.Symlink(realObj, link); err != nil {
-				return fmt.Errorf("symlink %s: %w", link, err)
-			}
-		}
-	}
-	return nil
-}
+// FixAnnobin works around the gcc-toolset annobin plugin naming mismatch. See
+// osprep.FixAnnobin for the full explanation.
+func (r *Runner) FixAnnobin() error { return osprep.FixAnnobin() }
 
 // OSTweaks runs any optional per-build shell workarounds (escape hatch).
-func (r *Runner) OSTweaks() error {
-	tweaks := r.Cfg.Build.Tweaks
-	if len(tweaks) == 0 {
-		logx.Log("### os-tweaks: none configured")
-		return nil
-	}
-	for i, t := range tweaks {
-		logx.Logf("### os-tweaks: [%d/%d] %s", i+1, len(tweaks), t)
-		if err := runShell(t); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+func (r *Runner) OSTweaks() error { return osprep.OSTweaks(r.Cfg.Build.Tweaks) }
 
 // CreateUser creates the rpmbuild user and the persisted data directories,
 // porting config/ossetup/create_rpmbuild_user.
 func (r *Runner) CreateUser() error {
-	logx.Logf("### create-user: ensuring build user %q exists", BuildUser)
-	if _, err := lookupUser(BuildUser); err != nil {
-		logx.Logf("- adding user %s", BuildUser)
-		if err := run("useradd", "-m", BuildUser); err != nil {
-			return err
-		}
-	} else {
-		logx.Logf("- user %s already present", BuildUser)
-	}
-	for _, dir := range []string{r.srpmsDir(), r.logDir(), r.builtDir()} {
-		if _, err := os.Stat(dir); err == nil {
-			continue
-		}
-		logx.Logf("- creating %s owned by %s", dir, BuildUser)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
-		if err := run("chown", BuildUser+":"+BuildUser, dir); err != nil {
-			return err
-		}
-	}
-	return nil
+	return osprep.CreateUser(BuildUser, []string{r.srpmsDir(), r.logDir(), r.builtDir()})
 }
 
 // ---- rpmbuild-user stages --------------------------------------------------
@@ -333,9 +205,21 @@ func rpmbuildHome() (string, error) {
 	return filepath.Join(home, "rpmbuild"), nil
 }
 
-// InstallSRPM downloads (with caching) and installs the source RPM.
+// InstallSRPM downloads (with caching) and installs the source RPM. A
+// file:// URL (e.g. for a locally built src.rpm, such as one produced by
+// ./build-rpm-from-git, rather than one published at a real download URL)
+// installs directly from that path instead -- it is never cached under
+// SRPMS/, since it isn't a download in the first place. This runs inside
+// the container, so the path must be container-visible, not host-relative:
+// file:///data/rpms_built_from_git/<os><major>__<label>/<name>.src.rpm, not
+// file://rpms_built_from_git/... (see config.Build.SRPM).
 func (r *Runner) InstallSRPM() error {
 	url := r.Cfg.Build.SRPM
+	if path, ok := strings.CutPrefix(url, "file://"); ok {
+		logx.Logf("### install-srpm: installing local file %s", path)
+		return osprep.Run("rpm", "-ivh", path)
+	}
+
 	name := filepath.Base(url)
 	cached := filepath.Join(r.srpmsDir(), name)
 
@@ -351,7 +235,7 @@ func (r *Runner) InstallSRPM() error {
 		}
 	}
 	logx.Logf("- installing %s", cached)
-	return run("rpm", "-ivh", cached)
+	return osprep.Run("rpm", "-ivh", cached)
 }
 
 // ApplyPatches copies any custom SPECS/SOURCES for this label into ~/rpmbuild
@@ -410,7 +294,7 @@ func (r *Runner) RPMBuild() error {
 	}
 
 	logx.Logf("### rpmbuild: started at %s", time.Now().UTC().Format(time.RFC3339))
-	buildErr := runIn(specs, "rpmbuild", "--define", r.rpmDefine(), "-ba", spec)
+	buildErr := osprep.RunIn(specs, "rpmbuild", "--define", r.rpmDefine(), "-ba", spec)
 	logx.Logf("### rpmbuild: finished, error=%v", buildErr)
 	return buildErr
 }

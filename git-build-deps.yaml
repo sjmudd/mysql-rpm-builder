@@ -1,48 +1,76 @@
-# Alternate config.yaml, used only by build-rpm-from-git (`-c` flag),
-# to install the toolchain `cmake configure` needs via the existing
-# mysql-rpm-builder install-packages step -- rather than a raw dnf/yum
-# call in that shell script -- so package installation stays centralized
-# through the one tool that already knows how to talk to yum/dnf.
-#
-# `srpm` is a required field (config.Resolve validates it's non-empty) but
-# is never used for this label: build-rpm-from-git never calls
-# install-srpm here, since its whole point is to build the src.rpm from a
-# git clone instead of an official download.
+# Bootstrap package list for the git-* subcommands (git-build-one / git-run /
+# git-clone / git-configure / git-assemble-srpm): just enough for `cmake
+# configure` to succeed against a plain git checkout, before any real
+# mysql.spec exists to run yum-builddep against. Required per OS -- there is
+# no spec to derive this list from at this point, so it can't be
+# auto-determined; see go/gitsteps for how it's loaded and used.
 #
 # libaio-devel is a hard `cmake configure` requirement on Linux (see
 # cmake/build_configurations/mysql_release.cmake), not an optional feature
 # quietly skipped when absent. The rest of this list mirrors the official
 # spec's non-packaging-only BuildRequires (skipping patchelf/dwz/annobin*/
 # elfutils, which matter only for binary-RPM stripping, not for cmake
-# configure or `rpmbuild -bs`) -- build-rpm-from-git separately runs
-# yum-builddep against its own cmake-generated mysql.spec to top up
-# anything this list misses.
+# configure or `rpmbuild -bs`) -- git-configure separately runs yum-builddep
+# against its own cmake-generated mysql.spec to top up anything this list
+# misses for a full binary build (not yet implemented; -bs alone doesn't need
+# it).
+#
+# oses.<os>.packages is the OS-stable base: tooling and libs that don't vary
+# by MySQL version. oses.<os>.builds.<tag>.packages, if present, is added on
+# top for that exact tag only -- currently just the compiler toolchain (see
+# below), the one thing empirically found to vary per MySQL release rather
+# than per OS. Unlike config.yaml, this is deliberately additive rather than
+# each build entry being fully self-contained: the base list is long and
+# genuinely OS-level (repo/library packages), so repeating it per tag would
+# be pure noise for the part that doesn't change.
+#
+# On gcc/compiler packages: Oracle picks a newer gcc-toolset (not the base
+# OS's static one) to build with on el8/el9, because MySQL major versions
+# ship faster than the base OS's compiler does -- and which gcc-toolset
+# version is needed is a property of the MySQL release being built, NOT of
+# the OS: different MySQL versions have depended on different gcc-toolset
+# generations over time (anywhere from ~10 through the current one), which
+# is exactly why this is a per-tag override and not part of the OS base list
+# above. Determine which one empirically per tag rather than guessing: an
+# el8/el9 `cmake configure` run with no gcc-toolset installed at all fails
+# with an explicit, actionable error naming the exact one needed --
+#
+#   CMake Warning at CMakeLists.txt:395 (MESSAGE):
+#     Could not find devtoolset compiler/linker in /opt/rh/gcc-toolset-<N>
+#   CMake Error at CMakeLists.txt:399 (MESSAGE):
+#     Or you can set CMAKE_C_COMPILER and CMAKE_CXX_COMPILER explicitly.
+#
+# -- because MySQL's own CMakeLists.txt hard-requires a devtoolset compiler
+# there (detected via `rpm -qf /`, checked directly against that specific
+# /opt/rh/gcc-toolset-<N> path), not just a generic "is the compiler
+# working" probe -- confirmed true on ol9/mysql-9.7.1 (needs gcc-toolset-14),
+# and confirmed NOT the case on ol10 at all (no gcc-toolset dir there,
+# configure succeeds with the base repo's plain gcc). Since CMakeLists.txt
+# checks that specific path itself (not generic PATH lookup), installing the
+# packages named in the error is sufficient -- no explicit compiler
+# activation (PATH/CC/CXX/scl enable) needed in go/gitsteps.
 oses:
-  ol10:
+  ol9:
+    packages: [bison, cmake, cyrus-sasl-devel, git, krb5-devel, libaio-devel,
+      libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel,
+      libudev-devel, make, ncurses-devel, numactl-devel, openldap-devel,
+      openssl-devel, pkgconfig(systemd), rpcgen, rpm-build, systemd, yum-utils]
     builds:
-      git-bootstrap:
-        srpm: unused
-        packages:
-          - git
-          - rpm-build
-          - yum-utils
-          - cmake
-          - bison
-          - gcc
-          - gcc-c++
-          - make
-          - openssl-devel
-          - libcurl-devel
-          - ncurses-devel
-          - libaio-devel
-          - numactl-devel
-          - krb5-devel
-          - cyrus-sasl-devel
-          - openldap-devel
-          - systemd
-          - pkgconfig(systemd)
-          - libfido2-devel
-          - libudev-devel
-          - libquadmath-devel
-          - libtirpc-devel
-          - rpcgen
+      mysql-9.7.1:
+        packages: [gcc-toolset-14-annobin-annocheck,
+          gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils,
+          gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++]
+      # Untested: run `./build-rpm-from-git -no-bison ol9 mysql-8.0.45` with
+      # this list empty first, then fill in whatever gcc-toolset-<N> the
+      # resulting CMake error names -- 8.0.x is a different, likely older,
+      # major branch than 9.7.1 and there's no reason to assume it needs the
+      # same toolset version (see this file's header comment on why that's
+      # never safe to assume).
+      mysql-8.0.45:
+        packages: []
+  ol10:
+    packages: [bison, cmake, cyrus-sasl-devel, gcc, gcc-c++, git, krb5-devel,
+      libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel,
+      libtirpc-devel, libudev-devel, make, ncurses-devel, numactl-devel,
+      openldap-devel, openssl-devel, pkgconfig(systemd), rpcgen, rpm-build,
+      systemd, yum-utils]

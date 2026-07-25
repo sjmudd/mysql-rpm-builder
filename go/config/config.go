@@ -52,6 +52,15 @@ type OSDef struct {
 // build actually requires but the spec's BuildRequires doesn't declare for
 // this OS (e.g. el8's mysql.spec needs `cpp`, for rpcgen, without saying so).
 type Build struct {
+	// SRPM is normally an https:// download URL (e.g. dev.mysql.com). It may
+	// also be a file:// URL, for a locally built src.rpm that was never
+	// published anywhere -- e.g. one produced by ./build-rpm-from-git under
+	// rpms_built_from_git/<os><major>__<label>/. steps.Runner.InstallSRPM
+	// installs directly from a file:// path (no download/caching), and
+	// since install-srpm always runs inside the container, the path must be
+	// container-visible: /data/rpms_built_from_git/<os><major>__<label>/<name>.src.rpm,
+	// not a host-side relative path. See ol10-9.7.1-own-built-src-rpm.yaml
+	// for a worked example.
 	SRPM string `yaml:"srpm"`
 	// AutoInstallDependencies lets yum-builddep determine and install the
 	// spec's BuildRequires instead of (or in addition to) listing them all

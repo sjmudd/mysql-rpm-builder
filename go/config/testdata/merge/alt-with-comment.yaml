@@ -1,0 +1,16 @@
+# Fixture standing in for a real -c alt config a build ran against: its
+# 9.8.0 entry has comments in both positions seen in the real repo (see
+# entryLinesFor's doc comment) -- one immediately before the label, one
+# between srpm: and packages: -- to prove MergeBuild copies the whole span
+# verbatim regardless of where the comment falls.
+oses:
+  trailing1:
+    builds:
+      # Needed because upstream's spec is missing xyz-devel for this OS;
+      # see docs/some-bug.md.
+      9.8.0:
+        srpm: https://example.invalid/9.8.0-commented.src.rpm
+        # also needs cmake explicitly since auto_install_dependencies alone
+        # doesn't cover it on this OS.
+        packages: [cmake]
+        auto_install_dependencies: true

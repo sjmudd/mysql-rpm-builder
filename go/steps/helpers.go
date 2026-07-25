@@ -20,34 +20,6 @@ import (
 	"github.com/sjmudd/mysql-rpm-builder/go/logx"
 )
 
-// run executes a command, teeing its output to the current log destination.
-func run(name string, args ...string) error { return runIn("", name, args...) }
-
-// runIn executes a command in dir (empty = current dir), teeing output to logs.
-func runIn(dir, name string, args ...string) error {
-	logx.Logf("+ %s %s", name, strings.Join(args, " "))
-	cmd := exec.Command(name, args...)
-	cmd.Dir = dir
-	cmd.Stdout = logx.Writer()
-	cmd.Stderr = logx.Writer()
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s failed: %w", name, err)
-	}
-	return nil
-}
-
-// runShell executes a shell snippet via `sh -c`, teeing output to logs.
-func runShell(script string) error {
-	logx.Logf("+ sh -c %q", script)
-	cmd := exec.Command("sh", "-c", script)
-	cmd.Stdout = logx.Writer()
-	cmd.Stderr = logx.Writer()
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("shell command failed: %w", err)
-	}
-	return nil
-}
-
 // downloadFile fetches url (following redirects, as net/http's default
 // client does) and writes it to dst. It downloads through dst+".download"
 // first and renames into place only once the transfer completes, so a

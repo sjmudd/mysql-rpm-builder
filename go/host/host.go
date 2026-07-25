@@ -61,7 +61,7 @@ func BuildOne(osName, label string, opts Options) int {
 	// and every log filename (host build-one log plus the in-container
 	// ossetup/build/rpm-qa files, via the RUN_CODE/RUN_DATETIME environment variables
 	// below) so a run's files all carry the same code and date.
-	code := randomSuffix(5)
+	code := RandomSuffix(5)
 	date := start.UTC().Format("20060102.150405")
 
 	dir, err := os.Getwd()
@@ -179,7 +179,7 @@ func BuildOne(osName, label string, opts Options) int {
 	appendBuildStatus(dir, osName, label, image, status, rc, elapsed)
 
 	if opts.AddIfSuccessful && status == "OK" {
-		mergeConfig(dir, osName, label, resolved.Build)
+		mergeConfig(dir, osName, label, resolved.Build, opts.ConfigFile)
 	}
 
 	logx.Logf("exit status %d (%s) for %sbuild of %s on %s", rc, status, noopText, label, osName)
@@ -218,9 +218,11 @@ func logPreflightMergeStatus(dir, osName, label string, build config.Build) {
 // mergeConfig folds a just-validated build entry into config.yaml (see
 // config.MergeBuild) and logs the outcome. It never affects the build's exit
 // code: the build already succeeded, and this is a best-effort convenience
-// on top of it.
-func mergeConfig(dir, osName, label string, build config.Build) {
-	status, err := config.MergeBuild(dir, osName, label, build, time.Now().UTC())
+// on top of it. sourceConfigFile (the -c alt config the build ran against)
+// lets MergeBuild copy that entry's comments verbatim instead of discarding
+// them -- see MergeBuild's doc comment for why that matters here.
+func mergeConfig(dir, osName, label string, build config.Build, sourceConfigFile string) {
+	status, err := config.MergeBuild(dir, osName, label, build, sourceConfigFile, time.Now().UTC())
 	switch {
 	case err != nil:
 		logx.Logf("- warning: could not merge %s/%s into %s: %v (merge manually)",
@@ -326,8 +328,10 @@ func appendBuildStatus(dir, osName, label, image, status string, rc, elapsed int
 	}
 }
 
-// randomSuffix returns n lowercase letters.
-func randomSuffix(n int) string {
+// RandomSuffix returns n lowercase letters, for a per-run docker container
+// name/log-filename suffix. Exported so go/cmd's git-build-one can use the
+// same convention as build-one's container names.
+func RandomSuffix(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyz"
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {

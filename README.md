@@ -72,6 +72,10 @@ much easier (see [Building in individual steps](#building-in-individual-steps)).
 A thin `build-one` shell wrapper is provided so the historical invocation
 still works: `./build-one ol10 9.7.1`.
 
+There's also a git-tag-based build path, entirely separate from the src.rpm
+one described above — see [Building from a git tag instead of a
+src.rpm](#building-from-a-git-tag-instead-of-a-src-rpm).
+
 ## Which versions do I rebuild?
 
 The `config.yaml` build matrix currently covers the modern el9/el10
@@ -142,6 +146,14 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
   Note `yum-builddep` is run against the `.spec` file, not the `.src.rpm`:
   it ignores macro-conditional `BuildRequires` (and `--define`) for a
   `.src.rpm` target. See: https://bugzilla.redhat.com/show_bug.cgi?id=2497059
+
+  `srpm` is normally an `https://` download URL, but it can also be a
+  `file://` URL for a locally built src.rpm with no real download URL — e.g.
+  one produced by `./build-rpm-from-git` (see below). `install-srpm` then
+  installs directly from that path (no download/caching involved). Since
+  `install-srpm` always runs *inside* the container, the path must be
+  container-visible: `file:///data/rpms_built_from_git/<os><major>__<tag>/<name>.src.rpm`,
+  not a host-relative one.
 
 ### Adding a build
 
@@ -412,16 +424,80 @@ uid/gid, which on RH systems is 1000. There is an assumption that the
 volume mounted via docker uses the same uid/gid; if it does not, things may
 fail.
 
+## Building from a git tag instead of a src.rpm
+
+Checking the `mysql/mysql-server` repo itself confirms there's no public
+trigger for `rpmbuild` anywhere in it: `.github/workflows/` only tests and
+validates PRs, and `packaging/rpm-oel/` has the `mysql.spec.in` template plus
+the cmake plumbing that generates the real spec, but nothing that chains
+`cmake configure` → `cpack` → `rpmbuild` into an actual build. That confirms
+Oracle's own build-and-sign pipeline is private tooling, not something this
+repo can lean on — which is the whole reason it exists in the first place.
+`build-rpm-from-git` reconstructs the equivalent of that pipeline from public
+inputs only: the git tag, plus the spec's own declared `BuildRequires`,
+instead of depending on Oracle's official src.rpm download at all.
+
+```
+./build-rpm-from-git [-no-bison] [-o <dir>] <os> <tag>
+e.g. ./build-rpm-from-git ol10 mysql-9.7.1
+```
+
+Like `build-one`, it's a thin wrapper around the same `mysql-rpm-builder`
+binary's own subcommands:
+
+| Command | Where | Purpose |
+|---|---|---|
+| `git-build-one [-o <dir>] [-no-bison] [-n] <os> <tag>` | host | launch a Docker container and build `<tag>` on `<os>` |
+| `git-run [-o <dir>] [-no-bison] <tag>` | container (root) | OS-prep (via `git-build-deps.yaml`'s bootstrap package list), then drives the steps below |
+| `git-clone` / `git-configure` / `git-assemble-srpm [-o <dir>] [-no-bison] <tag>` | container (rpmbuild) | individually re-runnable build-user steps, same debuggability as the src.rpm path's steps |
+
+It shallow-clones the tag, runs `cmake configure` (this is what actually
+produces the real `packaging/rpm-oel/mysql.spec` — nothing here
+hand-substitutes that template), optionally skips the pre-generated bison
+output (`-no-bison`: `mysql.spec` requires bison unconditionally, so a real
+`rpmbuild -ba` regenerates `sql_yacc.cc`/etc. itself regardless of what the
+tarball ships — see `docs/srpm-tarball-differs-from-git-tag.md`), packages
+the source tarball via CPack, and runs `rpmbuild -bs`. The resulting
+src.rpm lands in `rpms_built_from_git/<os><major>__<tag>/`.
+
+**Current scope: src.rpm only, `ol10`** — it doesn't (yet) run `rpmbuild -ba`
+to produce binary RPMs directly, and `git-build-deps.yaml` (the bootstrap
+package list needed just to get `cmake configure` running at all, before any
+real spec exists to run `yum-builddep` against) only has an `ol10` entry.
+
+To confirm a git-built src.rpm is actually usable by the normal
+`rpmbuild -ba` pipeline, point a `config.yaml`-shaped `-c` file's `srpm:` at
+it with a `file://` URL instead of a download one (see
+[Configuration](#configuration)):
+
+```yaml
+oses:
+  ol10:
+    builds:
+      9.7.1-from-git:
+        srpm: file:///data/rpms_built_from_git/ol10__mysql-9.7.1/mysql-community-9.7.1-1.el10.src.rpm
+        auto_install_dependencies: true
+```
+
+`-test`/`-add-if-successful` work exactly as they do for an official
+src.rpm — including that a comment on the merged entry survives the merge
+into `config.yaml` rather than being silently discarded (see
+`go/config/merge.go`), which matters here specifically because a build
+entry's comment is often the only record of *why* a workaround exists.
+
 ## Related thoughts
 
 None of what is done here is specific to MySQL, so this approach could be
 used for building other packages following the same philosophy.
 
-Others may ask why I build from the src.rpm files and not directly from the
-git repo. That might be an interesting addition to the tooling — the same
-lack of explicit documentation applies to building from the git tree.
-[Here](https://github.com/sjmudd/bacula-rpm-builder/) is an example of
-building from a git tree.
+Others used to ask why I build from the src.rpm files and not directly from
+the git repo — see [Building from a git tag instead of a
+src.rpm](#building-from-a-git-tag-instead-of-a-src-rpm) above, now that both
+are supported. The src.rpm path remains the default, being the more mature
+and tested of the two.
+[Here](https://github.com/sjmudd/bacula-rpm-builder/) is an example, in
+another project, of building from a git tree, which was the original
+inspiration.
 
 ## Some reported RPM rebuild failures and related bugs
 

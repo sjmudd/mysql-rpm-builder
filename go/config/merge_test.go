@@ -48,7 +48,7 @@ func TestMergeBuildInsertsAfterLastRealEntry(t *testing.T) {
 	}
 
 	build := Build{SRPM: "https://example.invalid/9.8.0.src.rpm", AutoInstallDependencies: boolPtr(true)}
-	status, err := MergeBuild(dir, "trailing1", "9.8.0", build, mergeNow)
+	status, err := MergeBuild(dir, "trailing1", "9.8.0", build, "", mergeNow)
 	if err != nil {
 		t.Fatalf("MergeBuild: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestMergeBuildInsertsBeforeTrailingDividerComment(t *testing.T) {
 	dir := mergeFixtureDir(t)
 
 	build := Build{SRPM: "https://example.invalid/9.8.0-t2.src.rpm", AutoInstallDependencies: boolPtr(true)}
-	status, err := MergeBuild(dir, "trailing2", "9.8.0", build, mergeNow)
+	status, err := MergeBuild(dir, "trailing2", "9.8.0", build, "", mergeNow)
 	if err != nil {
 		t.Fatalf("MergeBuild: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestMergeBuildAllCommentedEntries(t *testing.T) {
 	dir := mergeFixtureDir(t)
 
 	build := Build{SRPM: "https://example.invalid/9.8.0-ac.src.rpm", AutoInstallDependencies: boolPtr(false), Packages: []string{"cmake", "gcc"}}
-	status, err := MergeBuild(dir, "allcommented", "9.8.0", build, mergeNow)
+	status, err := MergeBuild(dir, "allcommented", "9.8.0", build, "", mergeNow)
 	if err != nil {
 		t.Fatalf("MergeBuild: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestMergeBuildSkipIdentical(t *testing.T) {
 	}
 
 	build := Build{SRPM: "https://example.invalid/9.9.9.src.rpm", AutoInstallDependencies: boolPtr(true)}
-	status, err := MergeBuild(dir, "existing", "9.9.9", build, mergeNow)
+	status, err := MergeBuild(dir, "existing", "9.9.9", build, "", mergeNow)
 	if err != nil {
 		t.Fatalf("MergeBuild: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestMergeBuildSkipDiffers(t *testing.T) {
 	}
 
 	build := Build{SRPM: "https://example.invalid/9.9.9-different.src.rpm", AutoInstallDependencies: boolPtr(true)}
-	status, err := MergeBuild(dir, "existing", "9.9.9", build, mergeNow)
+	status, err := MergeBuild(dir, "existing", "9.9.9", build, "", mergeNow)
 	if err != nil {
 		t.Fatalf("MergeBuild: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestMergeBuildErrorsWhenOSSectionMissing(t *testing.T) {
 	}
 
 	build := Build{SRPM: "https://example.invalid/ghost.src.rpm", AutoInstallDependencies: boolPtr(true)}
-	if _, err := MergeBuild(dir, "ghost", "1.0.0", build, mergeNow); err == nil {
+	if _, err := MergeBuild(dir, "ghost", "1.0.0", build, "", mergeNow); err == nil {
 		t.Fatalf("expected an error for an OS with no section in config.yaml, got nil")
 	}
 
@@ -257,6 +257,123 @@ func TestMergeBuildErrorsWhenOSSectionMissing(t *testing.T) {
 	}
 	if _, err := os.Stat(backupPath(dir)); err == nil {
 		t.Errorf("backup file was created despite the merge failing")
+	}
+}
+
+func TestMergeBuildPreservesSourceComments(t *testing.T) {
+	dir := mergeFixtureDir(t)
+
+	// Copy the alt config into the fixture dir too, as if it were the -c
+	// file the build actually ran against (MergeBuild reads it relative to
+	// dir, same as config.yaml itself).
+	altData, err := os.ReadFile(filepath.Join("testdata", "merge", "alt-with-comment.yaml"))
+	if err != nil {
+		t.Fatalf("reading alt-with-comment.yaml fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "alt-with-comment.yaml"), altData, 0o644); err != nil {
+		t.Fatalf("writing alt-with-comment.yaml into temp dir: %v", err)
+	}
+
+	build := Build{
+		SRPM:                    "https://example.invalid/9.8.0-commented.src.rpm",
+		AutoInstallDependencies: boolPtr(true),
+		Packages:                []string{"cmake"},
+	}
+	status, err := MergeBuild(dir, "trailing1", "9.8.0", build, "alt-with-comment.yaml", mergeNow)
+	if err != nil {
+		t.Fatalf("MergeBuild: %v", err)
+	}
+	if status != Merged {
+		t.Fatalf("status = %v, want Merged", status)
+	}
+
+	merged, err := os.ReadFile(filepath.Join(dir, DefaultConfigFile))
+	if err != nil {
+		t.Fatalf("reading merged config.yaml: %v", err)
+	}
+	text := string(merged)
+
+	// Both comments -- one before the label, one mid-entry -- survived.
+	for _, want := range []string{
+		"# Needed because upstream's spec is missing xyz-devel for this OS;",
+		"# see docs/some-bug.md.",
+		"# also needs cmake explicitly since auto_install_dependencies alone",
+		"# doesn't cover it on this OS.",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("merged file lost expected source comment %q, got:\n%s", want, text)
+		}
+	}
+
+	// Comments don't affect parsing: still resolves to exactly build.
+	c, err := Load(dir, "")
+	if err != nil {
+		t.Fatalf("reloading merged config: %v", err)
+	}
+	got, ok := c.Build("trailing1", "9.8.0")
+	if !ok {
+		t.Fatalf("merged build not found")
+	}
+	if !reflect.DeepEqual(got, build) {
+		t.Errorf("Build() = %+v, want %+v", got, build)
+	}
+}
+
+func TestEntryLinesFor(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("testdata", "merge", "config.yaml"))
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+
+	lines, err := entryLinesFor(string(content), "trailing2", "8.4.7")
+	if err != nil {
+		t.Fatalf("entryLinesFor: %v", err)
+	}
+	want := []string{
+		"      8.4.7:",
+		"        srpm: https://example.invalid/8.4.7.src.rpm",
+		"        auto_install_dependencies: true",
+	}
+	if !reflect.DeepEqual(lines, want) {
+		t.Errorf("entryLinesFor(trailing2, 8.4.7) = %#v, want %#v", lines, want)
+	}
+}
+
+func TestEntryLinesForWithLeadingComment(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("testdata", "merge", "alt-with-comment.yaml"))
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+
+	lines, err := entryLinesFor(string(content), "trailing1", "9.8.0")
+	if err != nil {
+		t.Fatalf("entryLinesFor: %v", err)
+	}
+	want := []string{
+		"      # Needed because upstream's spec is missing xyz-devel for this OS;",
+		"      # see docs/some-bug.md.",
+		"      9.8.0:",
+		"        srpm: https://example.invalid/9.8.0-commented.src.rpm",
+		"        # also needs cmake explicitly since auto_install_dependencies alone",
+		"        # doesn't cover it on this OS.",
+		"        packages: [cmake]",
+		"        auto_install_dependencies: true",
+	}
+	if !reflect.DeepEqual(lines, want) {
+		t.Errorf("entryLinesFor(trailing1, 9.8.0) = %#v, want %#v", lines, want)
+	}
+}
+
+func TestEntryLinesForNotFound(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("testdata", "merge", "config.yaml"))
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+	if _, err := entryLinesFor(string(content), "trailing2", "9.9.9"); err == nil {
+		t.Errorf("expected an error for a missing label, got nil")
+	}
+	if _, err := entryLinesFor(string(content), "ghost", "1.0.0"); err == nil {
+		t.Errorf("expected an error for a missing OS, got nil")
 	}
 }
 

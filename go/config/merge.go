@@ -90,13 +90,28 @@ func checkMergeStatus(mainCfg *Config, osName, label string, build Build) (statu
 // used by `build-one -c <alt> -add-if-successful` once a full build of an
 // alternate config's entry has succeeded.
 //
+// If sourceConfigFile is non-empty, the entry is copied from that file's raw
+// text (via entryLinesFor) rather than reconstructed from build alone, so
+// any comments on it survive the merge. This matters more here than in a
+// typical project: this repo's whole reason for existing is that rebuilding
+// MySQL RPMs is full of undocumented, easy-to-forget gotchas (missing
+// BuildRequires, annobin plugin naming mismatches, yum-builddep quirks --
+// see docs/), and a build entry's comment is usually the *only* place that
+// knowledge is recorded (e.g. config.yaml's ol8/8.4.7 entry, or
+// ol8-8.4.10.yaml's draft of the same). Reconstructing the entry from the
+// parsed Build struct via formatBuildEntry -- the fallback used when
+// sourceConfigFile is empty, and the only thing possible once a file has
+// been through config.Load, which never keeps comments -- would silently
+// discard exactly that "why", right when a successful test build is the
+// strongest signal yet that the workaround it documents is real.
+//
 // If (osName, label) already exists in config.yaml, MergeBuild never
 // overwrites it: it returns SkippedIdentical if the existing entry matches
 // build exactly, or SkippedDiffers if it doesn't. Before installing a merged
 // file, the pre-merge config.yaml is preserved as config.yaml.<UTC
 // timestamp> (now, formatted) so every auto-merge leaves a recoverable
 // snapshot behind.
-func MergeBuild(dir, osName, label string, build Build, now time.Time) (MergeStatus, error) {
+func MergeBuild(dir, osName, label string, build Build, sourceConfigFile string, now time.Time) (MergeStatus, error) {
 	mainCfg, err := Load(dir, "")
 	if err != nil {
 		return 0, fmt.Errorf("loading %s: %w", DefaultConfigFile, err)
@@ -115,7 +130,20 @@ func MergeBuild(dir, osName, label string, build Build, now time.Time) (MergeSta
 		return 0, fmt.Errorf("reading %s: %w", configPath, err)
 	}
 
-	merged, err := insertBuild(string(data), osName, label, build)
+	var sourceLines []string
+	if sourceConfigFile != "" {
+		srcPath := filepath.Join(dir, sourceConfigFile)
+		srcData, err := os.ReadFile(srcPath)
+		if err != nil {
+			return 0, fmt.Errorf("reading %s to preserve its comments: %w", srcPath, err)
+		}
+		sourceLines, err = entryLinesFor(string(srcData), osName, label)
+		if err != nil {
+			return 0, fmt.Errorf("extracting %s/%s from %s to preserve its comments: %w", osName, label, srcPath, err)
+		}
+	}
+
+	merged, err := insertBuild(string(data), osName, label, build, sourceLines)
 	if err != nil {
 		return 0, err
 	}
@@ -169,7 +197,16 @@ func validateMerge(dir, candidatePath, osName, label string, want Build) error {
 // the last real (uncommented) build entry there -- or immediately after the
 // "builds:" line if every entry under that OS is currently commented out.
 // Everything else in the file is left completely untouched.
-func insertBuild(content, osName, label string, build Build) (string, error) {
+//
+// If sourceLines is non-nil, it is used verbatim as the entry's text
+// (comments and all -- see entryLinesFor/MergeBuild); otherwise the entry is
+// rendered from build via formatBuildEntry. Either way, sourceLines/build
+// are expected to agree: validateMerge (in MergeBuild) re-parses the result
+// and confirms it actually resolves to build, so a source file using a
+// different indent convention than config.yaml's (which would misplace the
+// raw lines) is caught as a merge error rather than silently corrupting
+// config.yaml.
+func insertBuild(content, osName, label string, build Build, sourceLines []string) (string, error) {
 	lines := strings.Split(content, "\n")
 
 	osLineRe := regexp.MustCompile(`^  ` + regexp.QuoteMeta(osName) + `:\s*$`)
@@ -222,9 +259,15 @@ func insertBuild(content, osName, label string, build Build) (string, error) {
 		}
 	}
 
-	entryLines, err := formatBuildEntry(label, build)
-	if err != nil {
-		return "", err
+	var entryLines []string
+	if sourceLines != nil {
+		entryLines = sourceLines
+	} else {
+		var err error
+		entryLines, err = formatBuildEntry(label, build)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	result := make([]string, 0, len(lines)+len(entryLines))
@@ -232,6 +275,87 @@ func insertBuild(content, osName, label string, build Build) (string, error) {
 	result = append(result, entryLines...)
 	result = append(result, lines[insertAt:]...)
 	return strings.Join(result, "\n"), nil
+}
+
+// entryLinesFor extracts the raw lines of an existing build entry for
+// (osName, label) out of content -- from its "label:" line (plus any
+// contiguous, same-indent comment lines immediately preceding it) through
+// the last line still indented >= entryIndent (comments included, wherever
+// they fall within that span; the two real examples in this repo disagree
+// on where -- config.yaml's ol8/8.4.7 entry has its comment between the
+// label and srpm:, while ol8-8.4.10.yaml's draft of the same entry has it
+// between srpm: and packages:). That's why this copies the whole span
+// verbatim rather than picking one fixed slot to look for a comment in.
+//
+// Uses the same "first line with indent < entryIndent" boundary rule as
+// insertBuild's anchor scan above, so a low-indent section-divider comment
+// between entries (e.g. "  # Next section") correctly ends the entry rather
+// than being swept into it.
+func entryLinesFor(content, osName, label string) ([]string, error) {
+	lines := strings.Split(content, "\n")
+
+	osLineRe := regexp.MustCompile(`^  ` + regexp.QuoteMeta(osName) + `:\s*$`)
+	osIdx := -1
+	for i, l := range lines {
+		if osLineRe.MatchString(l) {
+			osIdx = i
+			break
+		}
+	}
+	if osIdx < 0 {
+		return nil, fmt.Errorf("could not find %q section header", osName)
+	}
+	if osIdx+1 >= len(lines) || !buildsHeaderRe.MatchString(lines[osIdx+1]) {
+		return nil, fmt.Errorf("expected \"builds:\" immediately after %q", osName)
+	}
+	buildsIdx := osIdx + 1
+
+	outerEnd := len(lines)
+	for i := buildsIdx + 1; i < len(lines); i++ {
+		if outerBoundaryRe.MatchString(lines[i]) {
+			outerEnd = i
+			break
+		}
+	}
+
+	labelLineRe := regexp.MustCompile(`^      ` + regexp.QuoteMeta(label) + `:\s*$`)
+	labelIdx := -1
+	for i := buildsIdx + 1; i < outerEnd; i++ {
+		if labelLineRe.MatchString(lines[i]) {
+			labelIdx = i
+			break
+		}
+	}
+	if labelIdx < 0 {
+		return nil, fmt.Errorf("could not find build entry %q under %q", label, osName)
+	}
+
+	// Walk backward over any comment lines immediately preceding the label,
+	// at the label's own indent (6 spaces) -- a comment explaining this
+	// specific entry, as opposed to e.g. a section divider at a shallower
+	// indent, or another entry's trailing comment separated by a blank line.
+	labelCommentRe := regexp.MustCompile(`^      #`)
+	start := labelIdx
+	for start > buildsIdx+1 && labelCommentRe.MatchString(lines[start-1]) {
+		start--
+	}
+
+	end := outerEnd
+	for i := labelIdx + 1; i < outerEnd; i++ {
+		indent, blank := indentOf(lines[i])
+		if !blank && indent < entryIndent {
+			end = i
+			break
+		}
+	}
+	// The scan above only stops at a non-blank low-indent line, so a blank
+	// line right before that (or before EOF/outerEnd) is still inside
+	// [start:end); trim it so the extracted span is exactly the entry, with
+	// no trailing blank line once spliced into the destination file.
+	for end > start && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+	return lines[start:end], nil
 }
 
 // indentOf returns the number of leading spaces in line. blank is true for
