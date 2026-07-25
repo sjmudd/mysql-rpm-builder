@@ -46,6 +46,19 @@ oses:
 
   ol8:
     builds:
+      8.4.7:
+        # mysql.spec's BuildRequires covers everything else for el8 (resolved
+        # via auto_install_dependencies/yum-builddep). These three are needed
+        # to build but missing from the spec's el8 BuildRequires:
+        #  - cpp: rpcgen shells out to the system C preprocessor to generate
+        #    xdr_gen/xcom_vp.h; without it rpcgen fails silently and xcom
+        #    fails to compile (undefined app_data_ptr et al).
+        #  - libfido2-devel, libudev-devel: the spec enables add_fido_plugins
+        #    for rhel>=8 but only declares these BuildRequires under
+        #    %if 0%{?rhel} == 10, so el8 needs them added explicitly.
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-community-8.4.7-1.el8.src.rpm
+        auto_install_dependencies: true
+        packages: [cpp, libfido2-devel, libudev-devel]
 
   ol9:
     builds:
@@ -80,6 +93,10 @@ oses:
 
       9.7.1:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el10.src.rpm
+        auto_install_dependencies: true
+      9.7.1-src-rpm-built-from-git:
+        # Test building the src rpm which was built with: ./build-rpm-from-git -no-bison ol10 mysql-9.7.1
+        srpm: file:///data/rpms_built_from_git/ol10__mysql-9.7.1/mysql-community-9.7.1-1.el10.src.rpm
         auto_install_dependencies: true
   #
   # Rocky Linux
