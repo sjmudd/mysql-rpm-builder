@@ -76,6 +76,16 @@ oses:
         packages: [libfido2-devel, libudev-devel]
         auto_install_dependencies: true
 
+      8.0.46-src-rpm-built-from-git:
+        # Test building the src rpm which was built with: ./build-rpm-from-git -no-bison ol9 mysql-8.0.46
+        srpm: file:///data/built-from-git/ol9__mysql-8.0.46/mysql-community-8.0.46-1.el9.src.rpm
+        packages: [libfido2-devel, libudev-devel]
+        auto_install_dependencies: true
+      8.4.10-src-rpm-built-from-git:
+        # Test building the src rpm which was built with: ./build-rpm-from-git -no-bison ol9 mysql-8.4.10
+        srpm: file:///data/built-from-git/ol9__mysql-8.4.10/mysql-community-8.4.10-1.el9.src.rpm
+        packages: [libfido2-devel, libudev-devel]
+        auto_install_dependencies: true
   ol10:
     builds:
       8.4.7:
