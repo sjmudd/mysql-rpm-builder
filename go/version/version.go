@@ -9,4 +9,4 @@
 package version
 
 // Version is the semantic version of this binary, compiled in from source.
-const Version = "v2.4.1"
+const Version = "v2.5.0"
