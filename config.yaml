@@ -108,6 +108,9 @@ oses:
         # Test building the src rpm which was built with: ./build-rpm-from-git -no-bison ol10 mysql-9.7.1
         srpm: file:///data/built-from-git/ol10__mysql-9.7.1/mysql-community-9.7.1-1.el10.src.rpm
         auto_install_dependencies: true
+      26.7.0:
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-26.7/mysql-community-26.7.0-1.el10.src.rpm
+        auto_install_dependencies: true
   #
   # Rocky Linux
   #
