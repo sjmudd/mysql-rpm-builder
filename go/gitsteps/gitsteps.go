@@ -530,6 +530,18 @@ func fetchExternalSources(specPath, elDefine, sourcesDir, cacheDir string) error
 	for _, m := range re.FindAllSubmatch(out, -1) {
 		url := string(m[1])
 		name := path.Base(url)
+		dst := filepath.Join(sourcesDir, name)
+		if _, err := os.Stat(dst); err == nil {
+			// The main tarball's own Source0 is also an http(s) URL (the
+			// official release download link), and it's already sitting
+			// here from the CPack package_source step a few lines above --
+			// re-fetching it from the CDN would be redundant even when the
+			// CDN still has it, and fails outright once an older release is
+			// superseded and pulled (confirmed: mysql-8.4.7.tar.gz 404s on
+			// cdn.mysql.com while mysql-8.4.10.tar.gz still 200s).
+			logx.Logf("### assemble_srpm: %s already present, leaving it alone", dst)
+			continue
+		}
 		cached := filepath.Join(cacheDir, name)
 		if _, err := os.Stat(cached); err == nil {
 			logx.Logf("### assemble_srpm: using cached external source %s", cached)
@@ -542,7 +554,7 @@ func fetchExternalSources(specPath, elDefine, sourcesDir, cacheDir string) error
 				return err
 			}
 		}
-		if err := osprep.Run("cp", cached, filepath.Join(sourcesDir, name)); err != nil {
+		if err := osprep.Run("cp", cached, dst); err != nil {
 			return err
 		}
 	}

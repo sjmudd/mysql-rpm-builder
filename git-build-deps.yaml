@@ -49,6 +49,22 @@
 # packages named in the error is sufficient -- no explicit compiler
 # activation (PATH/CC/CXX/scl enable) needed in go/gitsteps.
 oses:
+  ol8:
+    packages: [bison, cmake, cyrus-sasl-devel, git, krb5-devel, libaio-devel,
+      libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel,
+      libudev-devel, make, ncurses-devel, numactl-devel, openldap-devel,
+      openssl-devel, pkgconfig(systemd), rpcgen, rpm-build, systemd, yum-utils]
+    builds:
+      # Confirmed empirically 2026-07-27 per this file's header-comment
+      # method: an empty-list run's CMake error named these five exactly --
+      # gcc-toolset-12, matching the legacy shell-script build
+      # (config/ossetup/centos8__8.3.0+.sh, git history only -- covered
+      # centos8/ol8 8.4.4-8.4.6) and the same toolset ol9/mysql-8.0.46 and
+      # ol9/mysql-8.4.10 landed on above.
+      mysql-8.4.7:
+        packages: [gcc-toolset-12-annobin-annocheck,
+          gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils,
+          gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++]
   ol9:
     packages: [bison, cmake, cyrus-sasl-devel, git, krb5-devel, libaio-devel,
       libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel,
