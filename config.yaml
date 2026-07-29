@@ -86,6 +86,10 @@ oses:
         srpm: file:///data/built-from-git/ol9__mysql-8.4.10/mysql-community-8.4.10-1.el9.src.rpm
         packages: [libfido2-devel, libudev-devel]
         auto_install_dependencies: true
+      26.7.0:
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-26.7/mysql-community-26.7.0-1.el9.src.rpm
+        auto_install_dependencies: true
+        packages: [libfido2-devel, libudev-devel]
   ol10:
     builds:
       8.4.7:
@@ -110,6 +114,9 @@ oses:
         auto_install_dependencies: true
       26.7.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-26.7/mysql-community-26.7.0-1.el10.src.rpm
+        auto_install_dependencies: true
+      9.7.2:
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.2-1.el10.src.rpm
         auto_install_dependencies: true
   #
   # Rocky Linux
