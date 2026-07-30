@@ -55,6 +55,22 @@ make                            # fmt, vet, lint, build -> ./mysql-rpm-builder
 Output lands in `built/<os><major>__<label>/`; logs (including a package
 list snapshot before and after the build) in `log/`.
 
+`build-rpm-from-git` builds a src.rpm the same way but directly from a git
+ref instead of an official download — for when there's no official src.rpm
+yet (an unreleased branch, a patch you're testing). It has its own third
+config file, **`git-build-deps.yaml`** (the bootstrap packages `cmake
+configure` needs before any real spec exists to run `yum-builddep`
+against):
+
+```
+./build-rpm-from-git ol10 mysql-9.7.1                            # from an official release tag
+./build-rpm-from-git -repo <fork url> -ref <branch> ol9 26.7.0   # from a fork/branch, still labelled by its real version
+```
+
+Output lands in `built-from-git/<os><major>__<tag>/` — feed that src.rpm
+back into `config.yaml` (`srpm: file:///data/built-from-git/...`) to run it
+through `build-one` like any other.
+
 See [`REFERENCE.md`](REFERENCE.md) for the full command reference, config
 schema, individual debugging steps, and the git-tag build path's internals.
 
