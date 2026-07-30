@@ -40,6 +40,64 @@ func TestVersionStripsMysqlPrefix(t *testing.T) {
 	}
 }
 
+func TestResolveRepoRef(t *testing.T) {
+	cases := []struct {
+		name      string
+		repo, ref string
+		tag       string
+		wantRepo  string
+		wantRef   string
+	}{
+		{
+			name:     "both overridden",
+			repo:     "https://github.com/sjmudd/mysql-server.git",
+			ref:      "bug/120895",
+			tag:      "26.7.0",
+			wantRepo: "https://github.com/sjmudd/mysql-server.git",
+			wantRef:  "bug/120895",
+		},
+		{
+			// Repo overridden only: ref falls back to tag, e.g. building a
+			// Percona fork at whatever ref matches the version being built.
+			name:     "repo only",
+			repo:     "https://github.com/percona/percona-server.git",
+			ref:      "",
+			tag:      "8.0.42",
+			wantRepo: "https://github.com/percona/percona-server.git",
+			wantRef:  "8.0.42",
+		},
+		{
+			// Ref overridden only: repo falls back to DefaultRepo.
+			name:     "ref only",
+			repo:     "",
+			ref:      "bug/120895",
+			tag:      "26.7.0",
+			wantRepo: DefaultRepo,
+			wantRef:  "bug/120895",
+		},
+		{
+			// Neither overridden: today's exact tag-only behaviour.
+			name:     "neither",
+			repo:     "",
+			ref:      "",
+			tag:      "mysql-9.7.1",
+			wantRepo: DefaultRepo,
+			wantRef:  "mysql-9.7.1",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			repo, ref := resolveRepoRef(c.repo, c.ref, c.tag)
+			if repo != c.wantRepo {
+				t.Errorf("repo = %q, want %q", repo, c.wantRepo)
+			}
+			if ref != c.wantRef {
+				t.Errorf("ref = %q, want %q", ref, c.wantRef)
+			}
+		})
+	}
+}
+
 func TestOSAndRPMDefines(t *testing.T) {
 	r := testRunner("mysql-9.7.1")
 	if got, want := r.osLabel(), "ol10"; got != want {

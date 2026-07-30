@@ -52,10 +52,24 @@ const DepsFile = "git-build-deps.yaml"
 // -o is not given.
 const DefaultOutputDir = "built-from-git"
 
+// DefaultRepo is cloned when -repo doesn't override it: Oracle's own public
+// mysql-server repo, the same one this package has always cloned.
+const DefaultRepo = "https://github.com/mysql/mysql-server.git"
+
 // Runner carries the state for one git-tag build.
 type Runner struct {
 	OS  osrelease.Info
-	Tag string // git ref/tag/branch to build; also used as the output-directory label
+	Tag string // version label: used for naming (clone/build/output dirs) and
+	// to predict the CPack-produced tarball filename (mysql-<Tag>.tar.gz).
+	// Must match the real MYSQL_VERSION of whatever's actually checked out --
+	// true by construction for a real release tag (mysql-9.7.1 checks out
+	// exactly version 9.7.1), and true by convention when Repo/Ref override
+	// what's cloned (e.g. testing a patched trunk commit still labelled by
+	// its real 26.7.0 version, just from a different repo/branch).
+
+	Repo string // git remote to clone; defaults to DefaultRepo
+	Ref  string // branch or tag to check out (NOT a commit SHA -- see Clone's
+	// doc comment); defaults to Tag
 
 	DataDir   string
 	OutputDir string // base directory (relative to DataDir) for produced RPMs
@@ -63,7 +77,15 @@ type Runner struct {
 }
 
 // NewRunner detects the current OS and prepares a Runner for the given tag.
-func NewRunner(dataDir, tag, outputDir string, skipBison bool) (*Runner, error) {
+// repo/ref independently override what gets cloned: an empty repo defaults
+// to DefaultRepo, an empty ref defaults to tag itself -- so overriding only
+// the repo (e.g. to build against a Percona fork at whatever ref matches
+// tag) or only the ref (e.g. a differently-named branch on the default
+// repo) both work, not just the combined case. tag continues to serve
+// purely as the version label regardless of what repo/ref resolve to.
+// Passing both empty is exactly today's tag-only behaviour: DefaultRepo at
+// ref==tag.
+func NewRunner(dataDir, tag, outputDir string, skipBison bool, repo, ref string) (*Runner, error) {
 	info, err := osrelease.Detect()
 	if err != nil {
 		return nil, err
@@ -71,7 +93,20 @@ func NewRunner(dataDir, tag, outputDir string, skipBison bool) (*Runner, error) 
 	if outputDir == "" {
 		outputDir = DefaultOutputDir
 	}
-	return &Runner{OS: info, Tag: tag, DataDir: dataDir, OutputDir: outputDir, SkipBison: skipBison}, nil
+	repo, ref = resolveRepoRef(repo, ref, tag)
+	return &Runner{OS: info, Tag: tag, Repo: repo, Ref: ref, DataDir: dataDir, OutputDir: outputDir, SkipBison: skipBison}, nil
+}
+
+// resolveRepoRef applies NewRunner's repo/ref defaulting as a pure function,
+// split out so it can be unit-tested without going through osrelease.Detect.
+func resolveRepoRef(repo, ref, tag string) (string, string) {
+	if repo == "" {
+		repo = DefaultRepo
+	}
+	if ref == "" {
+		ref = tag
+	}
+	return repo, ref
 }
 
 func (r *Runner) version() string   { return strings.TrimPrefix(r.Tag, "mysql-") }
@@ -236,7 +271,7 @@ func (r *Runner) suBuild(stage string) error {
 		return err
 	}
 	logx.Logf("### switching to user %s to run %s", BuildUser, stage)
-	cmdStr := fmt.Sprintf("%s %s -o %s", exe, stage, r.OutputDir)
+	cmdStr := fmt.Sprintf("%s %s -o %s -repo %s -ref %s", exe, stage, r.OutputDir, r.Repo, r.Ref)
 	if r.SkipBison {
 		cmdStr += " -no-bison"
 	}
@@ -249,8 +284,9 @@ func (r *Runner) suBuild(stage string) error {
 
 // ---- build-user stages --------------------------------------------------
 
-// Clone shallow-clones r.Tag into a deterministic path under the current
-// user's home. Must run as BuildUser.
+// Clone shallow-clones r.Ref from r.Repo into a deterministic path under the
+// current user's home, labelled by r.Tag (the version, not necessarily the
+// same as r.Ref -- see Runner.Tag). Must run as BuildUser.
 func (r *Runner) Clone() error {
 	src, err := cloneDir(r.version())
 	if err != nil {
@@ -261,12 +297,18 @@ func (r *Runner) Clone() error {
 	// implies --single-branch. --no-tags additionally skips fetching every
 	// other tag's ref advertisement (mysql-server has thousands), which
 	// --branch alone does not suppress.
-	logx.Logf("### clone: %s into %s (shallow, single tag only)", r.Tag, src)
+	//
+	// FIXME: --branch cannot resolve a bare commit SHA (only refs/heads and
+	// refs/tags), so r.Ref is currently limited to branch/tag names. Pinning
+	// an exact commit would need a different sequence instead (`git init` +
+	// `git remote add` + `git fetch --depth 1 <repo> <sha>` + `git checkout
+	// FETCH_HEAD`), not implemented here yet.
+	logx.Logf("### clone: %s (ref %s) into %s (shallow, single ref only)", r.Repo, r.Ref, src)
 	if err := os.MkdirAll(filepath.Dir(src), 0o755); err != nil {
 		return err
 	}
-	return osprep.Run("git", "clone", "--depth", "1", "--no-tags", "--branch", r.Tag,
-		"https://github.com/mysql/mysql-server.git", src)
+	return osprep.Run("git", "clone", "--depth", "1", "--no-tags", "--branch", r.Ref,
+		r.Repo, src)
 }
 
 // Configure runs cmake configure against the already-cloned tree. Must run
@@ -668,6 +710,14 @@ func (r *Runner) collect(rpmbuildDir string) error {
 		return err
 	}
 	logx.Logf("### assemble_srpm: copying %d src.rpm(s) to %s", len(matches), dest)
+	// FIXME: this is a plain "cp", leaving the original also sitting in
+	// rpmbuildDir/SRPMS for the rest of the container's lifetime -- doubling
+	// disk usage there until --rm tears the container down. Nothing reads
+	// that copy again after this point, so switching to "mv" (an actual
+	// move, not "mv" as an alias for cp) would cut peak disk usage during
+	// the run, which matters on disk/NAS-constrained hosts even though the
+	// duplicate is eventually reclaimed anyway. Not changed here -- revisit
+	// later.
 	args := append(append([]string{}, matches...), dest+string(filepath.Separator))
 	return osprep.Run("cp", args...)
 }

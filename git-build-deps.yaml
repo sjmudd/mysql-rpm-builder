@@ -65,6 +65,16 @@ oses:
         packages: [gcc-toolset-12-annobin-annocheck,
           gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils,
           gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++]
+      # Confirmed empirically 2026-07-29 per this file's header-comment
+      # method (git-configure's CMake error named these five exactly) --
+      # same gcc-toolset-14 as ol9's "26.7.0" entry. Keyed "26.7.0" (not
+      # "mysql-26.7.0") for the same reason as ol9's entry: this is the
+      # exact -o/positional tag value used, decoupled from the actual git
+      # ref via -repo/-ref (built from the bug/120895 fork branch).
+      26.7.0:
+        packages: [gcc-toolset-14-annobin-annocheck,
+          gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils,
+          gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++]
   ol9:
     packages: [bison, cmake, cyrus-sasl-devel, git, krb5-devel, libaio-devel,
       libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel,
@@ -72,6 +82,18 @@ oses:
       openssl-devel, pkgconfig(systemd), rpcgen, rpm-build, systemd, yum-utils]
     builds:
       mysql-9.7.1:
+        packages: [gcc-toolset-14-annobin-annocheck,
+          gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils,
+          gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++]
+      # Confirmed empirically 2026-07-29 per this file's header-comment
+      # method (git-configure's CMake error named these five exactly) --
+      # same gcc-toolset-14 as mysql-9.7.1. Keyed "26.7.0" (not
+      # "mysql-26.7.0") because that's the exact -o/positional tag value
+      # used for this build (see go/gitsteps.Runner.Tag: a version label,
+      # decoupled from the actual git ref via -repo/-ref -- e.g. this
+      # version was built from the bug/120895 fork branch, not a real
+      # "mysql-26.7.0" tag).
+      26.7.0:
         packages: [gcc-toolset-14-annobin-annocheck,
           gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils,
           gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++]

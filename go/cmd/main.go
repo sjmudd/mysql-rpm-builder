@@ -142,17 +142,29 @@ func runGitBuildOne(args []string) {
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, `usage: mysql-rpm-builder git-build-one [flags] <os> <tag>
 
-  -o <dir>     output directory for the produced src.rpm, relative to the
-               repo root (default %q)
-  -no-bison    skip the pre-generated bison output (sql_yacc.cc/.h,
-               sql_hints.yy.cc/.h) -- mysql.spec requires bison
-               unconditionally, so a real rpmbuild -ba regenerates these
-               itself regardless of what the tarball ships
-  -n           dry run: print the docker command without running it
-`, gitsteps.DefaultOutputDir)
+  -o <dir>            output directory for the produced src.rpm, relative to
+                       the repo root (default %q)
+  -no-bison            skip the pre-generated bison output (sql_yacc.cc/.h,
+                       sql_hints.yy.cc/.h) -- mysql.spec requires bison
+                       unconditionally, so a real rpmbuild -ba regenerates
+                       these itself regardless of what the tarball ships
+  -repo <url>          git remote to clone instead of the default upstream
+                       repo (default %q)
+  -ref <name>          branch or tag to check out instead of a tag matching
+                       <tag> (default: <tag> itself). Not yet a commit SHA
+                       -- see go/gitsteps.Clone's FIXME. <tag> always still
+                       names the version (it must match the real
+                       MYSQL_VERSION at whatever gets checked out).
+                       Examples:
+                       -repo https://github.com/sjmudd/mysql-server.git -ref bug/120895
+                       -repo https://github.com/percona/percona-server.git
+  -n                   dry run: print the docker command without running it
+`, gitsteps.DefaultOutputDir, gitsteps.DefaultRepo)
 	}
 	outputDir := fs.String("o", gitsteps.DefaultOutputDir, "output directory for the produced src.rpm")
 	noBison := fs.Bool("no-bison", false, "skip the pre-generated bison output")
+	repo := fs.String("repo", gitsteps.DefaultRepo, "git remote to clone instead of the default upstream repo")
+	ref := fs.String("ref", "", "branch or tag to check out instead of a tag matching <tag> (defaults to <tag> itself)")
 	noop := fs.Bool("n", false, "dry run")
 	_ = fs.Parse(args)
 
@@ -201,6 +213,7 @@ func runGitBuildOne(args []string) {
 	if *noBison {
 		dockerArgs = append(dockerArgs, "-no-bison")
 	}
+	dockerArgs = append(dockerArgs, "-repo", *repo, "-ref", *ref)
 	dockerArgs = append(dockerArgs, tag)
 
 	if *noop {
@@ -235,6 +248,8 @@ func runGitContainer(cmd string, args []string) {
 	}
 	outputDir := fs.String("o", gitsteps.DefaultOutputDir, "output directory for the produced src.rpm")
 	noBison := fs.Bool("no-bison", false, "skip the pre-generated bison output")
+	repo := fs.String("repo", gitsteps.DefaultRepo, "git remote to clone instead of the default upstream repo")
+	ref := fs.String("ref", "", "branch or tag to check out instead of a tag matching <tag> (defaults to <tag> itself)")
 	_ = fs.Parse(args)
 
 	pos := fs.Args()
@@ -246,7 +261,7 @@ func runGitContainer(cmd string, args []string) {
 
 	checkPrivilege(cmd)
 
-	r, err := gitsteps.NewRunner(steps.DataDir, tag, *outputDir, *noBison)
+	r, err := gitsteps.NewRunner(steps.DataDir, tag, *outputDir, *noBison, *repo, *ref)
 	if err != nil {
 		logx.Fatalf(1, "%v", err)
 	}
