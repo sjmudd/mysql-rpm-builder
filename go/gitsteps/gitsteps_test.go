@@ -98,6 +98,36 @@ func TestResolveRepoRef(t *testing.T) {
 	}
 }
 
+func TestStageCmd(t *testing.T) {
+	// Regression test: -repo/-ref were once silently dropped from this
+	// re-exec'd command entirely (see stageCmd's doc comment), so every
+	// flag the top-level Runner carries must show up here, for every stage.
+	r := testRunner("26.7.0")
+	r.Repo = "https://github.com/sjmudd/mysql-server.git"
+	r.Ref = "bug/120895"
+
+	got := r.stageCmd("/data/mysql-rpm-builder", "git-clone")
+	want := "/data/mysql-rpm-builder git-clone -o " + DefaultOutputDir + " " +
+		"-repo https://github.com/sjmudd/mysql-server.git -ref bug/120895 26.7.0"
+	if got != want {
+		t.Errorf("stageCmd() = %q, want %q", got, want)
+	}
+}
+
+func TestStageCmdSkipBison(t *testing.T) {
+	r := testRunner("mysql-9.7.1")
+	r.Repo = DefaultRepo
+	r.Ref = "mysql-9.7.1"
+	r.SkipBison = true
+
+	got := r.stageCmd("/data/mysql-rpm-builder", "git-configure")
+	want := "/data/mysql-rpm-builder git-configure -o " + DefaultOutputDir +
+		" -repo " + DefaultRepo + " -ref mysql-9.7.1 -no-bison mysql-9.7.1"
+	if got != want {
+		t.Errorf("stageCmd() = %q, want %q", got, want)
+	}
+}
+
 func TestOSAndRPMDefines(t *testing.T) {
 	r := testRunner("mysql-9.7.1")
 	if got, want := r.osLabel(), "ol10"; got != want {

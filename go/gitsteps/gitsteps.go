@@ -263,20 +263,29 @@ func loadDepsPackages(dataDir, osLabel, tag string) ([]string, error) {
 	return packages, nil
 }
 
+// stageCmd builds the shell command line re-exec'd as BuildUser for stage,
+// porting every flag the top-level Runner was given through to the child
+// process -- split out from suBuild as a pure function specifically so the
+// full flag set can be asserted in a test without shelling out to `su`
+// (see the FIXME history: -repo/-ref were once missing here entirely,
+// silently discarding a fork/branch override on every re-exec'd stage).
+func (r *Runner) stageCmd(exe, stage string) string {
+	cmdStr := fmt.Sprintf("%s %s -o %s -repo %s -ref %s", exe, stage, r.OutputDir, r.Repo, r.Ref)
+	if r.SkipBison {
+		cmdStr += " -no-bison"
+	}
+	return cmdStr + " " + r.Tag
+}
+
 // suBuild re-execs this binary as BuildUser to run a single build-user stage,
-// porting the same -o/-no-bison flags through.
+// porting the same flags through (see stageCmd).
 func (r *Runner) suBuild(stage string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	logx.Logf("### switching to user %s to run %s", BuildUser, stage)
-	cmdStr := fmt.Sprintf("%s %s -o %s -repo %s -ref %s", exe, stage, r.OutputDir, r.Repo, r.Ref)
-	if r.SkipBison {
-		cmdStr += " -no-bison"
-	}
-	cmdStr += " " + r.Tag
-	cmd := exec.Command("su", "-", BuildUser, "-c", cmdStr)
+	cmd := exec.Command("su", "-", BuildUser, "-c", r.stageCmd(exe, stage))
 	cmd.Stdout = logx.Writer()
 	cmd.Stderr = logx.Writer()
 	return cmd.Run()

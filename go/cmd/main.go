@@ -130,6 +130,33 @@ A build stopped early by -test/-until/-timeout is reported as success (rc 0).
 	os.Exit(host.BuildOne(pos[0], pos[1], opts))
 }
 
+// gitBuildOneDockerArgs builds the `docker run` argv for one git-build-one
+// run, as a pure function so the full flag set can be asserted in a test
+// without actually invoking docker -- -repo/-ref were once missing here
+// entirely (added alongside -o/-no-bison later), which is exactly the kind
+// of gap this is meant to catch early.
+func gitBuildOneDockerArgs(dir, image, tag, code, outputDir string, noBison bool, repo, ref string) []string {
+	// Named the same way build-one names its containers
+	// (mysql-rpm-builder-<label>-<code>) so `docker ps` shows what's
+	// actually running instead of a random docker-assigned name.
+	args := []string{
+		"run",
+		"--name=" + fmt.Sprintf("mysql-rpm-builder-%s-%s", tag, code),
+		"--rm",
+		"--network=host",
+		"--hostname=buildhost",
+		"-v", dir + ":/data",
+		"-w", "/data",
+		image,
+		host.ContainerBinary, "git-run", "-o", outputDir,
+	}
+	if noBison {
+		args = append(args, "-no-bison")
+	}
+	args = append(args, "-repo", repo, "-ref", ref)
+	return append(args, tag)
+}
+
 // runGitBuildOne handles the host-side
 // `git-build-one [-o <dir>] [-no-bison] [-n] <os> <tag>`.
 //
@@ -195,26 +222,7 @@ func runGitBuildOne(args []string) {
 	}
 	logx.Logf("mysql-rpm-builder %s: git-build-one %s %s (image %s)", version.Version, osName, tag, image)
 
-	// Named the same way build-one names its containers
-	// (mysql-rpm-builder-<label>-<code>) so `docker ps` shows what's
-	// actually running instead of a random docker-assigned name.
-	name := fmt.Sprintf("mysql-rpm-builder-%s-%s", tag, code)
-	dockerArgs := []string{
-		"run",
-		"--name=" + name,
-		"--rm",
-		"--network=host",
-		"--hostname=buildhost",
-		"-v", dir + ":/data",
-		"-w", "/data",
-		image,
-		host.ContainerBinary, "git-run", "-o", *outputDir,
-	}
-	if *noBison {
-		dockerArgs = append(dockerArgs, "-no-bison")
-	}
-	dockerArgs = append(dockerArgs, "-repo", *repo, "-ref", *ref)
-	dockerArgs = append(dockerArgs, tag)
+	dockerArgs := gitBuildOneDockerArgs(dir, image, tag, code, *outputDir, *noBison, *repo, *ref)
 
 	if *noop {
 		logx.Logf("NOOP: docker %v", dockerArgs)

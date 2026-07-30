@@ -51,6 +51,37 @@ type Options struct {
 	AddIfSuccessful bool
 }
 
+// containerName is the docker --name for one run, shared with the run's log
+// filenames (via the code) so `docker ps` output can be matched back to a
+// specific run's logs under log/.
+func containerName(label, code string) string {
+	return fmt.Sprintf("mysql-rpm-builder-%s-%s", label, code)
+}
+
+// buildOneDockerArgs builds the `docker run` argv for one build-one run, as a
+// pure function so the full flag set (in particular -c, easy to silently
+// drop when adding a new option here) can be asserted in a test without
+// actually invoking docker.
+func buildOneDockerArgs(dir, image, label, code, date string, opts Options) []string {
+	args := []string{
+		"run",
+		"--name=" + containerName(label, code),
+		"--rm",
+		"--network=host",
+		"--hostname=buildhost",
+		"-v", dir + ":/data",
+		"-w", "/data",
+		"-e", "RUN_CODE=" + code,
+		"-e", "RUN_DATETIME=" + date,
+		image,
+		ContainerBinary, "run",
+	}
+	if opts.ConfigFile != "" {
+		args = append(args, "-c", opts.ConfigFile)
+	}
+	return append(args, label)
+}
+
 // BuildOne launches a Docker container to build the given MySQL label on the
 // given OS. It returns the process exit code. When a build is stopped early on
 // purpose (Timeout or Until), that is reported as success (rc 0).
@@ -112,24 +143,8 @@ func BuildOne(osName, label string, opts Options) int {
 		logx.Logf("- will stop the container after %s", opts.Timeout)
 	}
 
-	name := fmt.Sprintf("mysql-rpm-builder-%s-%s", label, code)
-	dockerArgs := []string{
-		"run",
-		"--name=" + name,
-		"--rm",
-		"--network=host",
-		"--hostname=buildhost",
-		"-v", dir + ":/data",
-		"-w", "/data",
-		"-e", "RUN_CODE=" + code,
-		"-e", "RUN_DATETIME=" + date,
-		image,
-		ContainerBinary, "run",
-	}
-	if opts.ConfigFile != "" {
-		dockerArgs = append(dockerArgs, "-c", opts.ConfigFile)
-	}
-	dockerArgs = append(dockerArgs, label)
+	name := containerName(label, code)
+	dockerArgs := buildOneDockerArgs(dir, image, label, code, date, opts)
 
 	rc := 0
 	var stopper earlyStopper
