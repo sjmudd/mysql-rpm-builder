@@ -17,13 +17,15 @@ Feedback welcome — `sjmudd` at `pobox.com`, or file an
 
 ## What it does
 
-- **Build binary rpms from an official src.rpm**, in a container, with the
-  build environment (packages, repos) fully declared rather than assumed.
-- **Build a patched version** of that src.rpm (a spec patch and/or a source
-  patch), same repeatable process.
+- **Build binary rpms from a src.rpm** — normally the official one — in a
+  container, with the build environment (packages, repos) fully declared
+  rather than assumed.
 - **Build a src.rpm directly from a mysql-server git tag, branch, or fork**
   (`build-rpm-from-git`) — useful for testing a candidate fix before it's
   an official release, since there's no official src.rpm to point at yet.
+- **Build a patched version** of a src.rpm (a spec patch and/or a source
+  patch — either the official one, or the one you just built from git),
+  same repeatable process.
 
 ## Quick start
 
