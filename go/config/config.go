@@ -68,6 +68,15 @@ type Build struct {
 	AutoInstallDependencies *bool    `yaml:"auto_install_dependencies,omitempty"`
 	Packages                []string `yaml:"packages"`
 	Tweaks                  []string `yaml:"tweaks"`
+	// Patches declares the patch files this build expects under
+	// config/<label>/ (paths relative to that directory, e.g.
+	// "SPECS/mysql.spec.patch"). When set, steps.Runner.ApplyPatches
+	// verifies every listed file exists and errors if config/<label>/ or
+	// any listed file is missing, instead of silently producing an
+	// unpatched build. Optional and backward compatible: omit it and
+	// apply-patches behaves exactly as before (applies whatever it finds
+	// under config/<label>/, or no-ops if that directory is absent).
+	Patches []string `yaml:"patches,omitempty"`
 }
 
 // ShouldInstallDependencies returns true if we explicitly set AutoInstallDependencies to true

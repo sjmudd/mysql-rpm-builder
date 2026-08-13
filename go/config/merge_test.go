@@ -143,7 +143,7 @@ func TestMergeBuildInsertsBeforeTrailingDividerComment(t *testing.T) {
 func TestMergeBuildAllCommentedEntries(t *testing.T) {
 	dir := mergeFixtureDir(t)
 
-	build := Build{SRPM: "https://example.invalid/9.8.0-ac.src.rpm", AutoInstallDependencies: boolPtr(false), Packages: []string{"cmake", "gcc"}}
+	build := Build{SRPM: "https://example.invalid/9.8.0-ac.src.rpm", AutoInstallDependencies: boolPtr(false), Packages: []string{"cmake", "gcc"}, Patches: []string{"SPECS/mysql.spec.patch"}}
 	status, err := MergeBuild(dir, "allcommented", "9.8.0", build, "", mergeNow)
 	if err != nil {
 		t.Fatalf("MergeBuild: %v", err)
@@ -169,6 +169,9 @@ func TestMergeBuildAllCommentedEntries(t *testing.T) {
 	}
 	if !strings.Contains(text, "packages: [cmake, gcc]") {
 		t.Errorf("expected flow-style packages list in merged entry, got:\n%s", text)
+	}
+	if !strings.Contains(text, "patches: [SPECS/mysql.spec.patch]") {
+		t.Errorf("expected flow-style patches list in merged entry, got:\n%s", text)
 	}
 
 	c, err := Load(dir, "")

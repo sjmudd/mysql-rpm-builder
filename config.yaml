@@ -104,6 +104,15 @@ oses:
       8.4.10:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-community-8.4.10-1.el10.src.rpm
         auto_install_dependencies: true
+      8.4.11.hyp:
+        # Hypergraph optimizer forced on, see config/8.4.11.hyp/README.txt.
+        # Verified via `build-one -test`: patch applies, cmake configure
+        # picks up WITH_HYPERGRAPH_OPTIMIZER (confirmed in the generated
+        # config header), reaches real compilation. Not run to a full
+        # completed build.
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-community-8.4.11-1.el10.src.rpm
+        auto_install_dependencies: true
+        patches: [SPECS/mysql.spec.patch, SOURCES/000.hypergraph_optimizer_enable.diff]
 
       9.7.1:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el10.src.rpm

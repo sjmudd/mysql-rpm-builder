@@ -397,6 +397,11 @@ func formatBuildEntry(label string, b Build) ([]string, error) {
 			&yaml.Node{Kind: yaml.ScalarNode, Value: "tweaks"},
 			stringFlowSeq(b.Tweaks))
 	}
+	if len(b.Patches) > 0 {
+		fields.Content = append(fields.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "patches"},
+			stringFlowSeq(b.Patches))
+	}
 
 	root := &yaml.Node{
 		Kind: yaml.MappingNode,

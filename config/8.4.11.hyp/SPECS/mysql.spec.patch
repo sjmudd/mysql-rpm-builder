@@ -1,0 +1,23 @@
+--- mysql.spec.orig
++++ mysql.spec
+@@ -149,9 +149,10 @@
+ Summary:        A very fast and reliable SQL database server
+ Group:          Applications/Databases
+ Version:        8.4.11
+-Release:        1%{?commercial:.1}%{?dist}
++Release:        1%{?commercial:.1}%{?dist}.hypergraph
+ License:        Copyright (c) 2000, 2026, %{mysql_vendor}. Under %{?license_type} license as shown in the Description field.
+ Source0:        https://cdn.mysql.com/Downloads/MySQL-8.4/%{src_dir}.tar.gz
++Patch0:         000.hypergraph_optimizer_enable.diff
+ URL:            http://www.mysql.com/
+ Packager:       MySQL Release Engineering <mysql-build@oss.oracle.com>
+ Vendor:         %{mysql_vendor}
+@@ -789,6 +790,8 @@
+ %else
+ %setup -q -T -a 0 -c -n %{src_dir}
+ %endif # 0%{?compatlib}
++# 000 Enable hypergraph optimizer
++%patch0 -p1
+ mkdir -p %{src_dir}/mysql-8.4
+ cp -p %{license_files_server} %{src_dir}/mysql-8.4
+ 

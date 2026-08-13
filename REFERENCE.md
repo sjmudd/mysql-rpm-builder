@@ -324,6 +324,15 @@ Then add a `config.yaml` build entry keyed by `<label>` pointing at the
 base src.rpm, and build with `./build-one <os> <label>`. See
 `config/8.2.0.hyp/` for a complete example.
 
+Optionally, list the expected patch files on the build entry itself with
+`patches: [SPECS/mysql.spec.patch, SOURCES/000.foo.diff]` (paths relative
+to `config/<label>/`). When set, `apply-patches` verifies every listed
+file exists before applying anything and fails loudly if `config/<label>/`
+or any listed file is missing — catching a typo'd label or a misplaced
+patch file instead of silently producing an unpatched build. Omitting
+`patches` keeps the original behaviour: whatever is found under
+`config/<label>/` is applied, and a missing `config/<label>/` is a no-op.
+
 ## Warning on differences between equivalent OS versions
 
 The RHEL-compatible distributions (Oracle Linux, Rocky Linux, AlmaLinux,

@@ -247,8 +247,17 @@ func (r *Runner) ApplyPatches() error {
 	}
 	base := filepath.Join(r.DataDir, "config", r.Cfg.Label)
 	if _, err := os.Stat(base); err != nil {
+		if len(r.Cfg.Build.Patches) > 0 {
+			return fmt.Errorf("apply-patches: build %q declares patches %v but %s does not exist", r.Cfg.Label, r.Cfg.Build.Patches, base)
+		}
 		logx.Logf("### apply-patches: no custom config for %s", r.Cfg.Label)
 		return nil
+	}
+	for _, p := range r.Cfg.Build.Patches {
+		full := filepath.Join(base, p)
+		if _, err := os.Stat(full); err != nil {
+			return fmt.Errorf("apply-patches: declared patch %q not found at %s", p, full)
+		}
 	}
 	logx.Logf("### apply-patches: applying custom config from %s", base)
 	for _, sub := range []string{"SPECS", "SOURCES"} {
