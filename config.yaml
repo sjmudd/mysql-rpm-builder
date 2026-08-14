@@ -60,6 +60,25 @@ oses:
         auto_install_dependencies: true
         packages: [cpp, libfido2-devel, libudev-devel]
 
+      26.7.0-unpatched-nopkgs:
+        # Official (unpatched) src.rpm, no packages override at all --
+        # confirming this will fail.
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-26.7/mysql-community-26.7.0-1.el8.src.rpm
+        auto_install_dependencies: true
+        packages: []
+      26.7.0-unpatched-pkgs:
+        # Official (unpatched) src.rpm, known fido workaround -- expect PASS.
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-26.7/mysql-community-26.7.0-1.el8.src.rpm
+        auto_install_dependencies: true
+        packages: [cpp, libfido2-devel, libudev-devel]
+      26.7.0-patched-nopkgs:
+        # Patched src.rpm (built via build-rpm-from-git from the
+        # sjmudd/mysql-server bug/120895 branch, which now also includes
+        # the el8-only BuildRequires: cpp fix) -- no packages override
+        # needed at all anymore -- expect PASS.
+        srpm: file:///data/built-from-git/ol8__26.7.0/mysql-community-26.7.0-1.el8.src.rpm
+        auto_install_dependencies: true
+
   ol9:
     builds:
       # auto_install_dependencies: true is insufficient
@@ -90,6 +109,19 @@ oses:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-26.7/mysql-community-26.7.0-1.el9.src.rpm
         auto_install_dependencies: true
         packages: [libfido2-devel, libudev-devel]
+
+      26.7.0-unpatched-nopkgs:
+        # Official (unpatched) src.rpm, no packages override -- expect FAIL.
+        # (the "26.7.0" entry above already proves the workaround passes.)
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-26.7/mysql-community-26.7.0-1.el9.src.rpm
+        auto_install_dependencies: true
+      26.7.0-patched-nopkgs:
+        # Patched src.rpm (built via build-rpm-from-git from the
+        # sjmudd/mysql-server bug/120895 branch), no packages needed --
+        # expect PASS.
+        srpm: file:///data/built-from-git/ol9__26.7.0/mysql-community-26.7.0-1.el9.src.rpm
+        auto_install_dependencies: true
+
   ol10:
     builds:
       8.4.7:
@@ -104,6 +136,9 @@ oses:
       8.4.10:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-community-8.4.10-1.el10.src.rpm
         auto_install_dependencies: true
+      8.4.11:
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-community-8.4.11-1.el10.src.rpm
+        auto_install_dependencies: true
       8.4.11.hyp:
         # Hypergraph optimizer forced on, see config/8.4.11.hyp/README.txt.
         # Verified via `build-one -test`: patch applies, cmake configure
@@ -117,15 +152,33 @@ oses:
       9.7.1:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el10.src.rpm
         auto_install_dependencies: true
+      9.7.2:
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.2-1.el10.src.rpm
+        auto_install_dependencies: true
+
+      9.7.2.lsv:
+        # Bug#105006 (per-user login session variables) patch, see
+        # config/9.7.2.lsv/README.txt
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.2-1.el10.src.rpm
+        auto_install_dependencies: true
+
       9.7.1-src-rpm-built-from-git:
         # Test building the src rpm which was built with: ./build-rpm-from-git -no-bison ol10 mysql-9.7.1
         srpm: file:///data/built-from-git/ol10__mysql-9.7.1/mysql-community-9.7.1-1.el10.src.rpm
         auto_install_dependencies: true
+
       26.7.0:
         srpm: https://dev.mysql.com/get/Downloads/MySQL-26.7/mysql-community-26.7.0-1.el10.src.rpm
         auto_install_dependencies: true
-      9.7.2:
-        srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.2-1.el10.src.rpm
+
+      # el10 was never affected (its BuildRequires always had the fido
+      # packages), so there's no "unpatched-nopkgs"/"unpatched-pkgs" pair
+      # here -- the "26.7.0" entry above already is that proof. This just
+      # confirms no regression from the patched src.rpm.
+      26.7.0-patched-nopkgs:
+        # Patched src.rpm (built via build-rpm-from-git from the
+        # sjmudd/mysql-server bug/120895 branch) -- expect PASS.
+        srpm: file:///data/built-from-git/ol10__26.7.0/mysql-community-26.7.0-1.el10.src.rpm
         auto_install_dependencies: true
   #
   # Rocky Linux
