@@ -10,10 +10,10 @@
 // template), generate Docs/INFO_SRC and (optionally) the pre-generated bison
 // output, package the source tarball via CPack, and run `rpmbuild -bs`.
 //
-// This intentionally never resolves a config.yaml build entry: there is no
+// This intentionally never resolves a rpm-build-config.yaml build entry: there is no
 // src.rpm URL for a git-tag build to have, so it does not go through
 // go/config.Resolve/go/steps.NewRunner at all. Root OS-prep is done via
-// go/osprep directly, using git-build-deps.yaml's bootstrap package list
+// go/osprep directly, using git-build-config.yaml's bootstrap package list
 // (see docs/srpm-tarball-differs-from-git-tag.md for why a plain git
 // checkout is an equally valid starting point as the official tarball).
 package gitsteps
@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -43,14 +44,55 @@ import (
 // src.rpm -- the same user go/steps uses for its rpmbuild-user stages.
 const BuildUser = "rpmbuild"
 
-// DepsFile is the bootstrap-package config, relative to DataDir. Separate
-// schema from config.yaml (flat oses.<os>.packages, no srpm/label nesting):
-// see git-build-deps.yaml's own header comment for why.
-const DepsFile = "git-build-deps.yaml"
+// DepsFile is the git-based build's own config, relative to DataDir.
+// Separate schema from rpm-build-config.yaml (nested oses.<os>.<tier>,
+// no srpm/label nesting): see git-build-config.yaml's own header comment
+// for why.
+const DepsFile = "git-build-config.yaml"
 
-// DefaultOutputDir is where produced RPMs land (relative to DataDir) when
-// -o is not given.
-const DefaultOutputDir = "built-from-git"
+// DefaultOutputDir is the base directory (relative to DataDir) where
+// produced RPMs land when -o is not given -- config.BuiltDir, shared with
+// go/steps' download-based build-one path (its own builtDir() joins the
+// same base with a "build-one" segment), so all three build types
+// partition one base by build type rather than each owning a separate root.
+const DefaultOutputDir = config.BuiltDir
+
+// rpmbuild's own fixed subdirectory names inside ~/rpmbuild (SPECS,
+// SOURCES, SRPMS, RPMS) -- rpmbuild's contract, not this package's to
+// rename, but named once here rather than repeated as bare strings.
+// Distinct from config.SRPMSCacheDir, which is this package's own
+// top-level download cache (see fetchExternalSources) -- same word,
+// unrelated directories.
+const (
+	rpmbuildSpecsDir   = "SPECS"
+	rpmbuildSourcesDir = "SOURCES"
+	rpmbuildSRPMSDir   = "SRPMS"
+	rpmbuildRPMSDir    = "RPMS"
+)
+
+// Subcommand names for the whole git-based build family, defined once here
+// so go/cmd's dispatch and this package's own suBuild re-exec calls can't
+// drift apart silently -- both sides are untyped strings otherwise, so the
+// compiler can't catch a typo across that boundary the way it would for a
+// misspelled identifier. CmdBuildSrcRPM/CmdBuildRPMs double as the
+// DefaultOutputDir partition names (see outputSubdir) as well as the host
+// subcommand names, so a result directory is self-explanatory about which
+// command produced it.
+const (
+	CmdBuildSrcRPM = "git-build-src-rpm" // host
+	CmdBuildRPMs   = "git-build-rpms"    // host
+
+	CmdSrcRPMBuild  = "git-src-rpm-build"  // in-container orchestrator
+	CmdAllRPMsBuild = "git-all-rpms-build" // in-container orchestrator
+
+	CmdClone          = "git-clone"
+	CmdApplyPatches   = "git-apply-patches"
+	CmdConfigure      = "git-configure"
+	CmdAssembleSrcRPM = "git-assemble-src-rpm"
+	CmdStage          = "git-stage"
+	CmdBuildDeps      = "git-builddeps"
+	CmdRPMBuild       = "git-rpmbuild"
+)
 
 // DefaultRepo is cloned when -repo doesn't override it: Oracle's own public
 // mysql-server repo, the same one this package has always cloned.
@@ -114,10 +156,15 @@ func (r *Runner) osLabel() string   { return r.OS.OSLabel() }
 func (r *Runner) elDefine() string  { return fmt.Sprintf("el%d", r.OS.Major) }
 func (r *Runner) rpmDefine() string { return r.elDefine() + " 1" }
 
-// outputSubdir is where this (os, tag) build's src.rpm lands, mirroring
-// go/steps.Runner's built/<os><major>__<label>/ convention.
-func (r *Runner) outputSubdir() string {
-	return filepath.Join(r.DataDir, r.OutputDir, r.osLabel()+"__"+r.Tag)
+// outputSubdir is where this (os, tag) build's result lands:
+// <OutputDir>/<buildType>/<os><major>__<tag>/, mirroring
+// go/steps.Runner's built/build-one/<os><major>__<label>/ convention.
+// buildType partitions this package's two producers (AssembleSrcRPM's
+// "git-build-src-rpm" and RPMBuild's "git-build-rpms") so a src.rpm-only
+// run and a full-rpm run for the same (os, tag) never land in, or mix
+// files into, the same directory.
+func (r *Runner) outputSubdir(buildType string) string {
+	return filepath.Join(r.DataDir, r.OutputDir, buildType, r.osLabel()+"__"+r.Tag)
 }
 
 // gitWorkSubdir is where the clone/build trees live under the build user's
@@ -145,10 +192,11 @@ func (r *Runner) generatedSpec(build string) string {
 
 // ---- root stage -------------------------------------------------------
 
-// Run performs the full git-tag build: root OS-prep (via go/osprep, using
-// git-build-deps.yaml's bootstrap package list), then re-execs as BuildUser
-// to Clone, Configure and AssembleSRPM in turn. Must run as root.
-func (r *Runner) Run() error {
+// SrcRPMBuild performs the src.rpm-only git-tag build: root OS-prep (via
+// go/osprep, using git-build-config.yaml's bootstrap package list), then
+// re-execs as BuildUser to Clone, Configure and AssembleSrcRPM in turn. Must
+// run as root.
+func (r *Runner) SrcRPMBuild() error {
 	repos, packages, err := r.loadBootstrap()
 	if err != nil {
 		return err
@@ -173,12 +221,10 @@ func (r *Runner) Run() error {
 	// full `rpmbuild -ba` compile -- see osprep.FixAnnobin's doc comment
 	// ("makes cmake's 'is the C compiler working' check fail"). So it's kept
 	// here even though this path only runs `rpmbuild -bs` (no compilation at
-	// all). That said, it's only actually been observed to matter on el8/el9
-	// gcc-toolset images, and git-build-deps.yaml only has an ol10 entry
-	// today (which has no gcc-toolset dir at all, so this is always a no-op
-	// in current practice) -- re-verify this is still needed/sufficient once
-	// git-build-deps.yaml gains el8/el9 entries or -ba binary-build support
-	// is added (see build-rpm-from-git's git history / the plan for that).
+	// all). It's only actually been observed to matter on el8/el9
+	// gcc-toolset images; on ol10 (no gcc-toolset dir at all) this is
+	// always a no-op. AllRPMsBuild calls it too, for the same reason plus
+	// the real `rpmbuild -ba` compile that follows.
 	if err := osprep.FixAnnobin(); err != nil {
 		return err
 	}
@@ -189,7 +235,7 @@ func (r *Runner) Run() error {
 		return err
 	}
 
-	for _, stage := range []string{"git-clone", "git-configure", "git-assemble-srpm"} {
+	for _, stage := range []string{CmdClone, CmdApplyPatches, CmdConfigure, CmdAssembleSrcRPM} {
 		if err := r.suBuild(stage); err != nil {
 			return fmt.Errorf("%s: %w", stage, err)
 		}
@@ -207,7 +253,7 @@ func (r *Runner) Run() error {
 // gcc-toolset-* packages installable there today. This path is opportunistic
 // reuse of that same config, not something independently verified for the
 // git-tag flow's own needs; it happens to be sufficient in practice (see
-// git-build-deps.yaml's ol9 entry, which needs a gcc-toolset package for
+// git-build-config.yaml's ol9 entry, which needs a gcc-toolset package for
 // exactly this reason) but isn't guaranteed to stay so for every OS/package.
 func (r *Runner) loadBootstrap() (config.Repos, []string, error) {
 	cfg, err := config.Load(r.DataDir, "")
@@ -225,42 +271,98 @@ func (r *Runner) loadBootstrap() (config.Repos, []string, error) {
 	return osDef.Repos, packages, nil
 }
 
-// depsFile mirrors the top level of git-build-deps.yaml: an OS-stable base
-// oses.<os>.packages list, plus an optional oses.<os>.builds.<tag>.packages
-// added on top for that exact tag only (deliberately not config.yaml-shaped
-// otherwise -- there is no srpm URL for this, and unlike config.yaml this IS
-// additive rather than each build entry standing alone -- see this file's
-// header comment for why).
+// depsFile mirrors the top level of git-build-config.yaml: an OS-stable
+// minimal_git_packages base, plus per-tag src_rpm_build_packages (added on
+// top for that exact tag only), all_rpms_extra_packages, and patches (see
+// loadPatches/ApplyPatches -- unrelated to the three dependency tiers) --
+// see the file's own header comment for what each tier means and why
+// they're kept separate. Deliberately not config.yaml-shaped otherwise --
+// there is no srpm URL for this, and minimal_git_packages/
+// src_rpm_build_packages are additive rather than each build entry
+// standing alone.
 type depsFile struct {
 	OSes map[string]struct {
-		Packages []string `yaml:"packages"`
-		Builds   map[string]struct {
-			Packages []string `yaml:"packages"`
+		MinimalGitPackages []string `yaml:"minimal_git_packages"`
+		Builds             map[string]struct {
+			SrcRPMBuildPackages  []string `yaml:"src_rpm_build_packages"`
+			AllRPMsExtraPackages []string `yaml:"all_rpms_extra_packages"`
+			Patches              []string `yaml:"patches,omitempty"`
 		} `yaml:"builds"`
 	} `yaml:"oses"`
 }
 
-func loadDepsPackages(dataDir, osLabel, tag string) ([]string, error) {
+func loadDeps(dataDir, osLabel string) (depsFile, error) {
 	depsPath := filepath.Join(dataDir, DepsFile)
 	data, err := os.ReadFile(depsPath)
 	if err != nil {
-		return nil, fmt.Errorf("cannot read %s: %w", depsPath, err)
+		return depsFile{}, fmt.Errorf("cannot read %s: %w", depsPath, err)
 	}
 	var df depsFile
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&df); err != nil {
-		return nil, fmt.Errorf("cannot parse %s: %w", depsPath, err)
+		return depsFile{}, fmt.Errorf("cannot parse %s: %w", depsPath, err)
 	}
-	entry, ok := df.OSes[osLabel]
-	if !ok || len(entry.Packages) == 0 {
-		return nil, fmt.Errorf("no packages configured for OS %q in %s", osLabel, depsPath)
+	if entry, ok := df.OSes[osLabel]; !ok || len(entry.MinimalGitPackages) == 0 {
+		return depsFile{}, fmt.Errorf("no minimal_git_packages configured for OS %q in %s", osLabel, depsPath)
 	}
-	packages := append([]string{}, entry.Packages...)
+	return df, nil
+}
+
+// loadDepsPackages returns the bootstrap package list needed just to get
+// `cmake configure` running (tiers 2+3: minimal_git_packages plus this
+// tag's own src_rpm_build_packages) -- used by both git-build-src-rpm and
+// git-build-rpms, since both run `cmake configure` before either produces
+// anything.
+func loadDepsPackages(dataDir, osLabel, tag string) ([]string, error) {
+	df, err := loadDeps(dataDir, osLabel)
+	if err != nil {
+		return nil, err
+	}
+	entry := df.OSes[osLabel]
+	packages := append([]string{}, entry.MinimalGitPackages...)
 	if build, ok := entry.Builds[tag]; ok {
-		packages = append(packages, build.Packages...)
+		packages = append(packages, build.SrcRPMBuildPackages...)
 	}
 	return packages, nil
+}
+
+// loadAllRPMsExtraPackages returns tier 4: packages that patch a gap in
+// this tag's spec's own declared BuildRequires. Used only by BuildDeps
+// (git-build-rpms); git-build-src-rpm never needs this since `-bs` never
+// evaluates BuildRequires. Empty (not an error) when nothing is configured
+// for this (os, tag) -- most tags need nothing here.
+func loadAllRPMsExtraPackages(dataDir, osLabel, tag string) ([]string, error) {
+	df, err := loadDeps(dataDir, osLabel)
+	if err != nil {
+		return nil, err
+	}
+	build, ok := df.OSes[osLabel].Builds[tag]
+	if !ok {
+		return nil, nil
+	}
+	return build.AllRPMsExtraPackages, nil
+}
+
+// loadPatches returns this (os, tag)'s configured patch filenames from
+// config/git-patches/<tag>/ (see ApplyPatches). Every entry must be a bare
+// filename, no path component -- a "/" in one is a config error, not
+// silently joined into some other path.
+func loadPatches(dataDir, osLabel, tag string) ([]string, error) {
+	df, err := loadDeps(dataDir, osLabel)
+	if err != nil {
+		return nil, err
+	}
+	build, ok := df.OSes[osLabel].Builds[tag]
+	if !ok {
+		return nil, nil
+	}
+	for _, p := range build.Patches {
+		if filepath.Base(p) != p {
+			return nil, fmt.Errorf("git-build-config.yaml: patch %q for %s/%s must be a bare filename (no path component) -- put it directly under config/git-patches/%s/", p, osLabel, tag, tag)
+		}
+	}
+	return build.Patches, nil
 }
 
 // stageCmd builds the shell command line re-exec'd as BuildUser for stage,
@@ -303,9 +405,13 @@ func (r *Runner) Clone() error {
 	}
 	// --depth 1 fetches only the tree at that one commit, not the repo's 20+
 	// years of history. --branch works for either a branch or a tag name and
-	// implies --single-branch. --no-tags additionally skips fetching every
-	// other tag's ref advertisement (mysql-server has thousands), which
-	// --branch alone does not suppress.
+	// implies --single-branch, which alone keeps this to one ref -- it does
+	// not fetch mysql-server's other several thousand tags. When r.Ref names
+	// a tag, that single tag's ref is still created locally as part of
+	// resolving --branch, so `git tag`/`git describe --tags` in the checked-
+	// out tree shows what was cloned; deliberately not passing --no-tags,
+	// which would suppress even that one ref and leave no trace of which tag
+	// produced the checkout.
 	//
 	// FIXME: --branch cannot resolve a bare commit SHA (only refs/heads and
 	// refs/tags), so r.Ref is currently limited to branch/tag names. Pinning
@@ -316,8 +422,40 @@ func (r *Runner) Clone() error {
 	if err := os.MkdirAll(filepath.Dir(src), 0o755); err != nil {
 		return err
 	}
-	return osprep.Run("git", "clone", "--depth", "1", "--no-tags", "--branch", r.Ref,
+	return osprep.Run("git", "clone", "--depth", "1", "--branch", r.Ref,
 		r.Repo, src)
+}
+
+// ApplyPatches applies this (os, tag)'s configured patches (see loadPatches)
+// against the freshly cloned tree via `git apply`, in list order, before
+// Configure runs -- so a patch to packaging/rpm-oel/mysql.spec.in takes
+// effect in the spec cmake renders. No-op if none are configured. Must run
+// as BuildUser, after Clone. Shared by git-build-src-rpm and git-build-rpms.
+func (r *Runner) ApplyPatches() error {
+	patches, err := loadPatches(r.DataDir, r.osLabel(), r.Tag)
+	if err != nil {
+		return err
+	}
+	if len(patches) == 0 {
+		logx.Log("### apply-patches: no patches configured, skipping")
+		return nil
+	}
+	src, err := cloneDir(r.version())
+	if err != nil {
+		return err
+	}
+	patchDir := filepath.Join(r.DataDir, "config", "git-patches", r.Tag)
+	for _, name := range patches {
+		p := filepath.Join(patchDir, name)
+		if _, err := os.Stat(p); err != nil {
+			return fmt.Errorf("apply-patches: declared patch %q not found at %s", name, p)
+		}
+		logx.Logf("### apply-patches: applying %s", name)
+		if err := osprep.RunIn(src, "git", "apply", p); err != nil {
+			return fmt.Errorf("apply-patches: %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // Configure runs cmake configure against the already-cloned tree. Must run
@@ -454,14 +592,46 @@ func (r *Runner) fetchBoost(srcDir string) (string, error) {
 	return cacheDir, nil
 }
 
-// AssembleSRPM finishes the build after Configure: generates Docs/INFO_SRC,
-// optionally the pre-generated bison output (skipped when SkipBison is set --
-// mysql.spec requires bison unconditionally, so a real rpmbuild -ba
-// regenerates these itself regardless of what the tarball ships), packages
-// the source tarball via CPack, runs `rpmbuild -bs`, and copies the
-// resulting src.rpm into <output_dir>/<os><major>__<tag>/. Must run as
-// BuildUser, after Configure.
-func (r *Runner) AssembleSRPM() error {
+// AssembleSrcRPM stages the build (see Stage) and runs `rpmbuild -bs`,
+// producing just a src.rpm into <output_dir>/<os><major>__<tag>/. Must run
+// as BuildUser, after Configure.
+func (r *Runner) AssembleSrcRPM() error {
+	if err := r.Stage(); err != nil {
+		return err
+	}
+	dir, err := rpmbuildDir()
+	if err != nil {
+		return err
+	}
+	logx.Log("### assemble_src_rpm: rpmbuild -bs")
+	if err := osprep.RunIn(filepath.Join(dir, rpmbuildSpecsDir), "rpmbuild", "--define", r.rpmDefine(), "-bs", "mysql.spec"); err != nil {
+		return err
+	}
+	return r.collect(dir)
+}
+
+// rpmbuildDir returns ~/rpmbuild for the current user -- shared by both the
+// src.rpm-only path (AssembleSrcRPM) and the full binary-rpm path
+// (RPMBuild), both of which read/write the same staged
+// SPECS/SOURCES/SRPMS/RPMS tree that Stage prepares.
+func rpmbuildDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, "rpmbuild"), nil
+}
+
+// Stage prepares everything a build needs after Configure: generates
+// Docs/INFO_SRC, optionally the pre-generated bison output (skipped when
+// SkipBison is set -- mysql.spec requires bison unconditionally, so a real
+// rpmbuild -ba regenerates these itself regardless of what the tarball
+// ships), packages the source tarball via CPack, and copies the
+// cmake-rendered spec and tarball into ~/rpmbuild/{SPECS,SOURCES}. Shared by
+// both AssembleSrcRPM (src.rpm only, via rpmbuild -bs) and BuildDeps +
+// RPMBuild (full binary rpms, via rpmbuild -ba) -- neither depends on how
+// far the other path goes. Must run as BuildUser, after Configure.
+func (r *Runner) Stage() error {
 	src, err := cloneDir(r.version())
 	if err != nil {
 		return err
@@ -507,20 +677,19 @@ func (r *Runner) AssembleSRPM() error {
 	}
 
 	spec := r.generatedSpec(build)
-	home, err := os.UserHomeDir()
+	dir, err := rpmbuildDir()
 	if err != nil {
 		return err
 	}
-	rpmbuildDir := filepath.Join(home, "rpmbuild")
-	for _, sub := range []string{"SOURCES", "SPECS", "SRPMS"} {
-		if err := os.MkdirAll(filepath.Join(rpmbuildDir, sub), 0o755); err != nil {
+	for _, sub := range []string{rpmbuildSourcesDir, rpmbuildSpecsDir, rpmbuildSRPMSDir, rpmbuildRPMSDir} {
+		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
 			return err
 		}
 	}
-	if err := osprep.Run("cp", tarball, filepath.Join(rpmbuildDir, "SOURCES")+string(filepath.Separator)); err != nil {
+	if err := osprep.Run("cp", tarball, filepath.Join(dir, rpmbuildSourcesDir)+string(filepath.Separator)); err != nil {
 		return err
 	}
-	specCopy := filepath.Join(rpmbuildDir, "SPECS", "mysql.spec")
+	specCopy := filepath.Join(dir, rpmbuildSpecsDir, "mysql.spec")
 	if err := osprep.Run("cp", spec, specCopy); err != nil {
 		return err
 	}
@@ -529,7 +698,7 @@ func (r *Runner) AssembleSRPM() error {
 	// doc comment) -- rpmbuild -bs errors on any declared Source that isn't
 	// present, even ones whose %if branch is irrelevant to what we actually
 	// want out of this build.
-	if err := fetchExternalSources(specCopy, r.elDefine(), filepath.Join(rpmbuildDir, "SOURCES"), filepath.Join(r.DataDir, "SRPMS")); err != nil {
+	if err := fetchExternalSources(specCopy, r.elDefine(), filepath.Join(dir, rpmbuildSourcesDir), filepath.Join(r.DataDir, config.SRPMSCacheDir)); err != nil {
 		return err
 	}
 
@@ -540,16 +709,7 @@ func (r *Runner) AssembleSRPM() error {
 	// (packaging/rpm-oel/'s own CMakeLists.txt only ever generates
 	// mysql.spec/mysql.init there) -- part of Oracle's private packaging
 	// pipeline, same theme as docs/srpm-tarball-differs-from-git-tag.md.
-	if err := provideLegacyFilterScripts(specCopy, filepath.Join(rpmbuildDir, "SOURCES")); err != nil {
-		return err
-	}
-
-	logx.Log("### assemble_srpm: rpmbuild -bs")
-	if err := osprep.RunIn(filepath.Join(rpmbuildDir, "SPECS"), "rpmbuild", "--define", r.rpmDefine(), "-bs", "mysql.spec"); err != nil {
-		return err
-	}
-
-	return r.collect(rpmbuildDir)
+	return provideLegacyFilterScripts(specCopy, filepath.Join(dir, rpmbuildSourcesDir))
 }
 
 // fetchExternalSources downloads (with caching under cacheDir, the same
@@ -590,14 +750,14 @@ func fetchExternalSources(specPath, elDefine, sourcesDir, cacheDir string) error
 			// CDN still has it, and fails outright once an older release is
 			// superseded and pulled (confirmed: mysql-8.4.7.tar.gz 404s on
 			// cdn.mysql.com while mysql-8.4.10.tar.gz still 200s).
-			logx.Logf("### assemble_srpm: %s already present, leaving it alone", dst)
+			logx.Logf("### assemble_src_rpm: %s already present, leaving it alone", dst)
 			continue
 		}
 		cached := filepath.Join(cacheDir, name)
 		if _, err := os.Stat(cached); err == nil {
-			logx.Logf("### assemble_srpm: using cached external source %s", cached)
+			logx.Logf("### assemble_src_rpm: using cached external source %s", cached)
 		} else {
-			logx.Logf("### assemble_srpm: downloading external source declared by the spec: %s", url)
+			logx.Logf("### assemble_src_rpm: downloading external source declared by the spec: %s", url)
 			if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 				return err
 			}
@@ -656,10 +816,10 @@ func provideLegacyFilterScripts(specPath, sourcesDir string) error {
 		}
 		dst := filepath.Join(sourcesDir, name)
 		if _, err := os.Stat(dst); err == nil {
-			logx.Logf("### assemble_srpm: %s already present, leaving it alone", dst)
+			logx.Logf("### assemble_src_rpm: %s already present, leaving it alone", dst)
 			continue
 		}
-		logx.Logf("### assemble_srpm: providing %s (declared by the spec, absent from the git tree)", name)
+		logx.Logf("### assemble_src_rpm: providing %s (declared by the spec, absent from the git tree)", name)
 		if err := os.WriteFile(dst, []byte(content), 0o755); err != nil {
 			return err
 		}
@@ -707,18 +867,18 @@ func downloadFile(dst, url string) error {
 // writable by BuildUser -- Run creates and chowns it during the root OS-prep
 // phase, before re-execing as BuildUser.
 func (r *Runner) collect(rpmbuildDir string) error {
-	matches, err := filepath.Glob(filepath.Join(rpmbuildDir, "SRPMS", "*.rpm"))
+	matches, err := filepath.Glob(filepath.Join(rpmbuildDir, rpmbuildSRPMSDir, "*.rpm"))
 	if err != nil {
 		return err
 	}
 	if len(matches) == 0 {
-		return fmt.Errorf("no src.rpm found under %s", filepath.Join(rpmbuildDir, "SRPMS"))
+		return fmt.Errorf("no src.rpm found under %s", filepath.Join(rpmbuildDir, rpmbuildSRPMSDir))
 	}
-	dest := r.outputSubdir()
+	dest := r.outputSubdir(CmdBuildSrcRPM)
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err
 	}
-	logx.Logf("### assemble_srpm: copying %d src.rpm(s) to %s", len(matches), dest)
+	logx.Logf("### assemble_src_rpm: copying %d src.rpm(s) to %s", len(matches), dest)
 	// FIXME: this is a plain "cp", leaving the original also sitting in
 	// rpmbuildDir/SRPMS for the rest of the container's lifetime -- doubling
 	// disk usage there until --rm tears the container down. Nothing reads
@@ -729,4 +889,120 @@ func (r *Runner) collect(rpmbuildDir string) error {
 	// later.
 	args := append(append([]string{}, matches...), dest+string(filepath.Separator))
 	return osprep.Run("cp", args...)
+}
+
+// ---- full binary-rpm build (git-build-rpms) --------------------------
+
+// BuildDeps resolves the staged spec's BuildRequires as root with
+// yum-builddep, then installs any all_rpms_extra_packages configured for
+// this (os, tag) in git-build-config.yaml -- tier 4, patching a gap in the
+// spec's own declared BuildRequires (empty for most tags; see the file's
+// header comment). Independent of go/steps.Runner.BuildDeps (same
+// reasoning as downloadFile above: go/gitsteps deliberately does not
+// import go/steps). Must run as root, after Stage.
+func (r *Runner) BuildDeps() error {
+	logx.Log("### install-builddeps: resolving build dependencies with yum-builddep")
+	if err := osprep.Run("yum", "install", "-y", "yum-utils"); err != nil { // provides yum-builddep
+		return err
+	}
+	u, err := user.Lookup(BuildUser)
+	if err != nil {
+		return err
+	}
+	specs := filepath.Join(u.HomeDir, "rpmbuild", rpmbuildSpecsDir)
+	if err := osprep.RunIn(specs, "yum-builddep", "-y", filepath.Join(specs, "mysql.spec")); err != nil {
+		return err
+	}
+	extra, err := loadAllRPMsExtraPackages(r.DataDir, r.osLabel(), r.Tag)
+	if err != nil {
+		return err
+	}
+	if len(extra) == 0 {
+		return nil
+	}
+	logx.Logf("### install-builddeps: installing all_rpms_extra_packages: %v", extra)
+	return osprep.InstallPackages(extra)
+}
+
+// RPMBuild runs `rpmbuild -ba` against the staged spec -- producing both
+// binary RPMs and a src.rpm in one pass, unlike AssembleSrcRPM's `-bs` -- then
+// collects everything into <output_dir>/<os><major>__<tag>/. Must run as
+// BuildUser, after BuildDeps.
+func (r *Runner) RPMBuild() error {
+	dir, err := rpmbuildDir()
+	if err != nil {
+		return err
+	}
+	specs := filepath.Join(dir, rpmbuildSpecsDir)
+	logx.Log("### rpmbuild: rpmbuild -ba")
+	if err := osprep.RunIn(specs, "rpmbuild", "--define", r.rpmDefine(), "-ba", "mysql.spec"); err != nil {
+		return err
+	}
+	return r.collectAll(dir)
+}
+
+// collectAll copies both the src.rpm and binary RPMs produced by
+// RPMBuild into <output_dir>/<os><major>__<tag>/ -- like collect, but
+// also picks up RPMS/*/*.rpm (mirroring go/steps.Runner.Collect, which
+// globs the same two patterns for the download-based path).
+func (r *Runner) collectAll(rpmbuildDir string) error {
+	var matches []string
+	for _, pat := range []string{
+		filepath.Join(rpmbuildDir, rpmbuildSRPMSDir, "*.rpm"),
+		filepath.Join(rpmbuildDir, rpmbuildRPMSDir, "*", "*.rpm"),
+	} {
+		m, err := filepath.Glob(pat)
+		if err != nil {
+			return err
+		}
+		matches = append(matches, m...)
+	}
+	if len(matches) == 0 {
+		return fmt.Errorf("no RPMs found under %s", rpmbuildDir)
+	}
+	dest := r.outputSubdir(CmdBuildRPMs)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
+	logx.Logf("### rpmbuild: copying %d RPM(s) to %s", len(matches), dest)
+	args := append(append([]string{}, matches...), dest+string(filepath.Separator))
+	return osprep.Run("cp", args...)
+}
+
+// AllRPMsBuild performs the full git-tag binary-RPM build: the same root
+// OS-prep as SrcRPMBuild, then BuildUser for Clone/Configure/Stage, back to
+// root for BuildDeps, then BuildUser again for RPMBuild -- the same
+// privilege hand-off go/steps.Runner.Setup uses for the download-based path
+// (builddep must run as root but needs the spec the build user just
+// staged). Must run as root.
+func (r *Runner) AllRPMsBuild() error {
+	repos, packages, err := r.loadBootstrap()
+	if err != nil {
+		return err
+	}
+	if err := osprep.SetupRepos(repos); err != nil {
+		return err
+	}
+	if err := osprep.Refresh(); err != nil {
+		return err
+	}
+	if err := osprep.InstallPackages(packages); err != nil {
+		return err
+	}
+	if err := osprep.FixAnnobin(); err != nil {
+		return err
+	}
+	if err := osprep.CreateUser(BuildUser, []string{filepath.Join(r.DataDir, r.OutputDir)}); err != nil {
+		return err
+	}
+
+	for _, stage := range []string{CmdClone, CmdApplyPatches, CmdConfigure, CmdStage} {
+		if err := r.suBuild(stage); err != nil {
+			return fmt.Errorf("%s: %w", stage, err)
+		}
+	}
+	if err := r.BuildDeps(); err != nil {
+		return fmt.Errorf("%s: %w", CmdBuildDeps, err)
+	}
+	return r.suBuild(CmdRPMBuild)
 }

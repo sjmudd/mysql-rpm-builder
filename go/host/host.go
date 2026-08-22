@@ -3,8 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package host implements the host-side `build-one` command: it resolves the
-// container image for an OS and runs the builder inside Docker, mirroring the
-// original build-one bash script.
+// container image for an OS and runs the builder inside Docker.
 package host
 
 import (
@@ -43,9 +42,9 @@ type Options struct {
 	// Until, if non-nil, stops the container as soon as a line of build output
 	// matches this regexp (see CompileMarker for the common "past cmake" case).
 	Until *regexp.Regexp
-	// ConfigFile, if non-empty, is an alternate config.yaml path (relative to the repo root).
+	// ConfigFile, if non-empty, is an alternate rpm-build-config.yaml path (relative to the repo root).
 	ConfigFile string
-	// AddIfSuccessful merges ConfigFile's build entry into config.yaml once
+	// AddIfSuccessful merges ConfigFile's build entry into rpm-build-config.yaml once
 	// a full build (not an early -test/-until/-timeout stop) succeeds.
 	// Requires ConfigFile to be set.
 	AddIfSuccessful bool
@@ -119,7 +118,7 @@ func BuildOne(osName, label string, opts Options) int {
 		logPreflightMergeStatus(dir, osName, label, resolved.Build)
 	}
 
-	logFile := filepath.Join(dir, "log", fmt.Sprintf("build-one.%s__%s__%s__%s.log", osName, label, code, date))
+	logFile := filepath.Join(dir, config.LogDir, "build-one", fmt.Sprintf("%s__%s__%s__%s.log", osName, label, code, date))
 	closer, err := logx.SetTee(logFile)
 	if err != nil {
 		logx.Fatalf(1, "cannot open logfile %s: %v", logFile, err)
@@ -202,14 +201,14 @@ func BuildOne(osName, label string, opts Options) int {
 }
 
 // logPreflightMergeStatus warns upfront, before the (possibly hours-long)
-// build even starts, when config.yaml already has an entry for (osName,
+// build even starts, when rpm-build-config.yaml already has an entry for (osName,
 // label): the same check MergeBuild would do after a successful build, run
 // early so the user isn't left to notice it only once the build has
 // finished. Whether the
 // entry looks identical or different is only a hint from a struct-level
 // comparison (e.g. a reordered packages list already counts as "different"
 // even though it may be logically the same) -- the user still needs to
-// eyeball it and, if it's not actually the same, remove it from config.yaml
+// eyeball it and, if it's not actually the same, remove it from rpm-build-config.yaml
 // so a later successful build can merge the corrected entry. It never
 // affects whether the build runs.
 func logPreflightMergeStatus(dir, osName, label string, build config.Build) {
@@ -230,7 +229,7 @@ func logPreflightMergeStatus(dir, osName, label string, build config.Build) {
 	}
 }
 
-// mergeConfig folds a just-validated build entry into config.yaml (see
+// mergeConfig folds a just-validated build entry into rpm-build-config.yaml (see
 // config.MergeBuild) and logs the outcome. It never affects the build's exit
 // code: the build already succeeded, and this is a best-effort convenience
 // on top of it. sourceConfigFile (the -c alt config the build ran against)
@@ -325,10 +324,14 @@ func (w *lineWatcher) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// appendBuildStatus appends a one-line summary to log/build-one.build_status,
-// matching the format used by the original script.
+// appendBuildStatus appends a one-line summary to log/build-one/build_status.
 func appendBuildStatus(dir, osName, label, image, status string, rc, elapsed int) {
-	path := filepath.Join(dir, "log", "build-one.build_status")
+	logDir := filepath.Join(dir, config.LogDir, "build-one")
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		logx.Logf("- warning: cannot create %s: %v", logDir, err)
+		return
+	}
+	path := filepath.Join(logDir, "build_status")
 	host, _ := os.Hostname()
 	line := fmt.Sprintf("%s %s build-one[%d] osname=%s, label=%s, image=%s, status=%s, rc=%d, elapsed=%d\n",
 		time.Now().UTC().Format("2006-01-02T15:04:05"), host, os.Getpid(), osName, label, image, status, rc, elapsed)
@@ -344,8 +347,8 @@ func appendBuildStatus(dir, osName, label, image, status string, rc, elapsed int
 }
 
 // RandomSuffix returns n lowercase letters, for a per-run docker container
-// name/log-filename suffix. Exported so go/cmd's git-build-one can use the
-// same convention as build-one's container names.
+// name/log-filename suffix. Exported so go/cmd's git-build-src-rpm/
+// git-build-rpms can use the same convention as build-one's container names.
 func RandomSuffix(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyz"
 	b := make([]byte, n)

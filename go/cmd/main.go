@@ -16,12 +16,20 @@
 // The individual step commands let a failed stage be re-run in a debug
 // container without repeating the expensive rpmbuild.
 //
-// It also builds a src.rpm directly from a mysql-server git tag, bypassing
-// Oracle's official src.rpm download entirely (see go/gitsteps):
+// It also builds directly from a mysql-server git tag, bypassing Oracle's
+// official src.rpm download entirely (see go/gitsteps):
 //
-//   - Host:          git-build-one [flags] <os> <tag>
-//   - Orchestration: git-run [flags] <tag>          run inside the container
-//   - Individual:    git-clone|git-configure|git-assemble-srpm [flags] <tag>
+//   - Host:          git-build-src-rpm [flags] <os> <tag>   src.rpm only
+//
+//   - Orchestration: git-src-rpm-build [flags] <tag>        run inside the container
+//
+//   - Individual:    git-clone|git-apply-patches|git-configure|git-assemble-src-rpm [flags] <tag>
+//
+//   - Host:          git-build-rpms [flags] <os> <tag>      full binary RPM set
+//
+//   - Orchestration: git-all-rpms-build [flags] <tag>       run inside the container
+//
+//   - Individual:    git-clone|git-apply-patches|git-configure|git-stage|git-builddeps|git-rpmbuild [flags] <tag>
 package main
 
 import (
@@ -57,9 +65,12 @@ func main() {
 		"record-init", "refresh", "setup-repos", "install-packages", "fix-annobin", "os-tweaks", "create-user",
 		"install-srpm", "install-builddeps", "apply-patches", "rpmbuild", "collect":
 		runContainer(cmd, rest)
-	case "git-build-one":
-		runGitBuildOne(rest)
-	case "git-run", "git-clone", "git-configure", "git-assemble-srpm":
+	case gitsteps.CmdBuildSrcRPM:
+		runGitBuildSrcRPM(rest)
+	case gitsteps.CmdBuildRPMs:
+		runGitBuildRPMs(rest)
+	case gitsteps.CmdSrcRPMBuild, gitsteps.CmdAllRPMsBuild, gitsteps.CmdClone, gitsteps.CmdApplyPatches,
+		gitsteps.CmdConfigure, gitsteps.CmdAssembleSrcRPM, gitsteps.CmdStage, gitsteps.CmdBuildDeps, gitsteps.CmdRPMBuild:
 		runGitContainer(cmd, rest)
 	case "version", "-v", "--version":
 		fmt.Printf("mysql-rpm-builder %s\n", version.Version)
@@ -83,14 +94,14 @@ func runBuildOne(args []string) {
                       build deps and cmake configure all work without a full build
   -until <regexp>     stop the container when a line of build output matches <regexp>
   -timeout <dur>      stop the container after <dur> (e.g. 30m, 2h)
-  -c <path>           use an alternate config file instead of config.yaml
+  -c <path>           use an alternate config file instead of rpm-build-config.yaml
   -add-if-successful  after a full successful build (not -test/-until/-timeout),
-                      merge the -c config's build entry into config.yaml.
+                      merge the -c config's build entry into rpm-build-config.yaml.
                       Requires -c. An existing (os, label) entry is never
                       overwritten: identical entries are skipped silently,
                       differing ones are skipped with a warning. The
-                      pre-merge config.yaml is preserved as
-                      config.yaml.<UTC timestamp>.
+                      pre-merge rpm-build-config.yaml is preserved as
+                      rpm-build-config.yaml.<UTC timestamp>.
 
 A build stopped early by -test/-until/-timeout is reported as success (rc 0).
 `)
@@ -99,9 +110,9 @@ A build stopped early by -test/-until/-timeout is reported as success (rc 0).
 	test := fs.Bool("test", false, "stop once compilation starts (past cmake)")
 	until := fs.String("until", "", "stop when build output matches this regexp")
 	timeout := fs.Duration("timeout", 0, "stop the container after this duration")
-	configFile := fs.String("c", "", "alternate config.yaml path, relative to the repo root")
+	configFile := fs.String("c", "", "alternate rpm-build-config.yaml path, relative to the repo root")
 	addIfSuccessful := fs.Bool("add-if-successful", false,
-		"after a full successful build, merge the -c config's build entry into config.yaml")
+		"after a full successful build, merge the -c config's build entry into rpm-build-config.yaml")
 	_ = fs.Parse(args)
 
 	if *addIfSuccessful && *configFile == "" {
@@ -130,12 +141,13 @@ A build stopped early by -test/-until/-timeout is reported as success (rc 0).
 	os.Exit(host.BuildOne(pos[0], pos[1], opts))
 }
 
-// gitBuildOneDockerArgs builds the `docker run` argv for one git-build-one
-// run, as a pure function so the full flag set can be asserted in a test
-// without actually invoking docker -- -repo/-ref were once missing here
-// entirely (added alongside -o/-no-bison later), which is exactly the kind
-// of gap this is meant to catch early.
-func gitBuildOneDockerArgs(dir, image, tag, code, outputDir string, noBison bool, repo, ref string) []string {
+// gitDockerArgs builds the `docker run` argv for one git-build-src-rpm/
+// git-build-rpms run, as a pure function so the full flag set can be
+// asserted in a test without actually invoking docker -- -repo/-ref were
+// once missing here entirely (added alongside -o/-no-bison later), which is
+// exactly the kind of gap this is meant to catch early. containerCmd is the
+// in-container orchestrator to invoke ("git-src-rpm-build" or "git-all-rpms-build").
+func gitDockerArgs(dir, image, tag, code, outputDir string, noBison bool, repo, ref, containerCmd string) []string {
 	// Named the same way build-one names its containers
 	// (mysql-rpm-builder-<label>-<code>) so `docker ps` shows what's
 	// actually running instead of a random docker-assigned name.
@@ -148,7 +160,7 @@ func gitBuildOneDockerArgs(dir, image, tag, code, outputDir string, noBison bool
 		"-v", dir + ":/data",
 		"-w", "/data",
 		image,
-		host.ContainerBinary, "git-run", "-o", outputDir,
+		host.ContainerBinary, containerCmd, "-o", outputDir,
 	}
 	if noBison {
 		args = append(args, "-no-bison")
@@ -157,20 +169,23 @@ func gitBuildOneDockerArgs(dir, image, tag, code, outputDir string, noBison bool
 	return append(args, tag)
 }
 
-// runGitBuildOne handles the host-side
-// `git-build-one [-o <dir>] [-no-bison] [-n] <os> <tag>`.
+// runGitHostBuild implements the host-side `git-build-src-rpm`/`git-build-rpms`
+// commands: `<subcommand> [-o <dir>] [-no-bison] [-repo <url>] [-ref <name>] [-n] <os> <tag>`.
+// The two share every flag -- only which in-container orchestrator gets
+// invoked (containerCmd) and what the run produces differ.
 //
 // Deliberately simpler than runBuildOne/host.BuildOne: no -test/-until/-timeout
 // early-stop flags, no -add-if-successful config merge, no per-run
 // code/build_status tracking -- this port is scaffolding, not yet at parity
 // with the srpm-based path's maturity.
-func runGitBuildOne(args []string) {
-	fs := flag.NewFlagSet("git-build-one", flag.ExitOnError)
+func runGitHostBuild(subcommand, containerCmd, produces string, args []string) {
+	fs := flag.NewFlagSet(subcommand, flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, `usage: mysql-rpm-builder git-build-one [flags] <os> <tag>
+		fmt.Fprintf(os.Stderr, `usage: mysql-rpm-builder %s [flags] <os> <tag>
 
-  -o <dir>            output directory for the produced src.rpm, relative to
-                       the repo root (default %q)
+  produces: %s
+
+  -o <dir>            output directory, relative to the repo root (default %q)
   -no-bison            skip the pre-generated bison output (sql_yacc.cc/.h,
                        sql_hints.yy.cc/.h) -- mysql.spec requires bison
                        unconditionally, so a real rpmbuild -ba regenerates
@@ -186,9 +201,9 @@ func runGitBuildOne(args []string) {
                        -repo https://github.com/sjmudd/mysql-server.git -ref bug/120895
                        -repo https://github.com/percona/percona-server.git
   -n                   dry run: print the docker command without running it
-`, gitsteps.DefaultOutputDir, gitsteps.DefaultRepo)
+`, subcommand, produces, gitsteps.DefaultOutputDir, gitsteps.DefaultRepo)
 	}
-	outputDir := fs.String("o", gitsteps.DefaultOutputDir, "output directory for the produced src.rpm")
+	outputDir := fs.String("o", gitsteps.DefaultOutputDir, "output directory")
 	noBison := fs.Bool("no-bison", false, "skip the pre-generated bison output")
 	repo := fs.String("repo", gitsteps.DefaultRepo, "git remote to clone instead of the default upstream repo")
 	ref := fs.String("ref", "", "branch or tag to check out instead of a tag matching <tag> (defaults to <tag> itself)")
@@ -216,13 +231,13 @@ func runGitBuildOne(args []string) {
 	}
 
 	code := host.RandomSuffix(5)
-	logFile := filepath.Join(dir, "log", fmt.Sprintf("git-build-one.%s__%s__%s.log", osName, tag, code))
+	logFile := filepath.Join(dir, config.LogDir, subcommand, fmt.Sprintf("%s__%s__%s.log", osName, tag, code))
 	if _, err := logx.SetTee(logFile); err != nil {
 		logx.Fatalf(1, "cannot open logfile %s: %v", logFile, err)
 	}
-	logx.Logf("mysql-rpm-builder %s: git-build-one %s %s (image %s)", version.Version, osName, tag, image)
+	logx.Logf("mysql-rpm-builder %s: %s %s %s (image %s)", version.Version, subcommand, osName, tag, image)
 
-	dockerArgs := gitBuildOneDockerArgs(dir, image, tag, code, *outputDir, *noBison, *repo, *ref)
+	dockerArgs := gitDockerArgs(dir, image, tag, code, *outputDir, *noBison, *repo, *ref, containerCmd)
 
 	if *noop {
 		logx.Logf("NOOP: docker %v", dockerArgs)
@@ -241,13 +256,22 @@ func runGitBuildOne(args []string) {
 			rc = 1
 		}
 	}
-	logx.Logf("exit status %d for git-build-one of %s on %s", rc, tag, osName)
+	logx.Logf("exit status %d for %s of %s on %s", rc, subcommand, tag, osName)
 	os.Exit(rc)
 }
 
+func runGitBuildSrcRPM(args []string) {
+	runGitHostBuild(gitsteps.CmdBuildSrcRPM, gitsteps.CmdSrcRPMBuild, "src.rpm only", args)
+}
+
+func runGitBuildRPMs(args []string) {
+	runGitHostBuild(gitsteps.CmdBuildRPMs, gitsteps.CmdAllRPMsBuild, "full binary RPM set", args)
+}
+
 // runGitContainer handles the in-container git-* commands: the root
-// orchestrator (git-run) and the individually re-runnable build-user steps
-// (git-clone, git-configure, git-assemble-srpm).
+// orchestrators (git-src-rpm-build, git-all-rpms-build) and the individually
+// re-runnable build-user steps (git-clone, git-apply-patches, git-configure, git-assemble-src-rpm,
+// git-stage, git-builddeps, git-rpmbuild).
 func runGitContainer(cmd string, args []string) {
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 	fs.Usage = func() {
@@ -274,22 +298,37 @@ func runGitContainer(cmd string, args []string) {
 		logx.Fatalf(1, "%v", err)
 	}
 
-	if cmd == "git-run" {
-		teeTo(filepath.Join(steps.DataDir, "log", fmt.Sprintf("git-run.%s__%s.log", r.OS.OSLabel(), tag)))
+	// buildType groups this run's log under the same log/<type>/ directory
+	// its host-side launcher log uses (host subcommand name, not this
+	// in-container orchestrator name), matching built/<type>/'s partitioning.
+	if cmd == gitsteps.CmdSrcRPMBuild {
+		teeTo(filepath.Join(steps.DataDir, config.LogDir, gitsteps.CmdBuildSrcRPM, fmt.Sprintf("%s.%s__%s.log", cmd, r.OS.OSLabel(), tag)))
+	} else if cmd == gitsteps.CmdAllRPMsBuild {
+		teeTo(filepath.Join(steps.DataDir, config.LogDir, gitsteps.CmdBuildRPMs, fmt.Sprintf("%s.%s__%s.log", cmd, r.OS.OSLabel(), tag)))
 	}
 
 	logx.Logf("mysql-rpm-builder %s: %s %s / %s", version.Version, cmd, r.OS.OSLabel(), tag)
 
 	var stageErr error
 	switch cmd {
-	case "git-run":
-		stageErr = r.Run()
-	case "git-clone":
+	case gitsteps.CmdSrcRPMBuild:
+		stageErr = r.SrcRPMBuild()
+	case gitsteps.CmdAllRPMsBuild:
+		stageErr = r.AllRPMsBuild()
+	case gitsteps.CmdClone:
 		stageErr = r.Clone()
-	case "git-configure":
+	case gitsteps.CmdApplyPatches:
+		stageErr = r.ApplyPatches()
+	case gitsteps.CmdConfigure:
 		stageErr = r.Configure()
-	case "git-assemble-srpm":
-		stageErr = r.AssembleSRPM()
+	case gitsteps.CmdAssembleSrcRPM:
+		stageErr = r.AssembleSrcRPM()
+	case gitsteps.CmdStage:
+		stageErr = r.Stage()
+	case gitsteps.CmdBuildDeps:
+		stageErr = r.BuildDeps()
+	case gitsteps.CmdRPMBuild:
+		stageErr = r.RPMBuild()
 	}
 	if stageErr != nil {
 		logx.Fatalf(1, "%s failed: %v", cmd, stageErr)
@@ -300,25 +339,30 @@ func runGitContainer(cmd string, args []string) {
 // stageNeeds records the required privilege for each in-container command.
 // true = must run as root; false = must run as the (non-root) build user.
 var stageNeedsRoot = map[string]bool{
-	"setup":             true,
-	"run":               true,
-	"record-init":       true,
-	"refresh":           true,
-	"setup-repos":       true,
-	"install-packages":  true,
-	"fix-annobin":       true,
-	"os-tweaks":         true,
-	"create-user":       true,
-	"install-builddeps": true,
-	"build-rpm":         false,
-	"install-srpm":      false,
-	"apply-patches":     false,
-	"rpmbuild":          false,
-	"collect":           false,
-	"git-run":           true,
-	"git-clone":         false,
-	"git-configure":     false,
-	"git-assemble-srpm": false,
+	"setup":                    true,
+	"run":                      true,
+	"record-init":              true,
+	"refresh":                  true,
+	"setup-repos":              true,
+	"install-packages":         true,
+	"fix-annobin":              true,
+	"os-tweaks":                true,
+	"create-user":              true,
+	"install-builddeps":        true,
+	"build-rpm":                false,
+	"install-srpm":             false,
+	"apply-patches":            false,
+	"rpmbuild":                 false,
+	"collect":                  false,
+	gitsteps.CmdSrcRPMBuild:    true,
+	gitsteps.CmdClone:          false,
+	gitsteps.CmdApplyPatches:   false,
+	gitsteps.CmdConfigure:      false,
+	gitsteps.CmdAssembleSrcRPM: false,
+	gitsteps.CmdAllRPMsBuild:   true,
+	gitsteps.CmdStage:          false,
+	gitsteps.CmdBuildDeps:      true,
+	gitsteps.CmdRPMBuild:       false,
 }
 
 // runContainer handles all in-container commands.
@@ -329,7 +373,7 @@ func runContainer(cmd string, args []string) {
 		fmt.Fprintf(os.Stderr, "\nflags:\n")
 		fs.PrintDefaults()
 	}
-	configFile := fs.String("c", "", "alternate config.yaml path, relative to the repo root")
+	configFile := fs.String("c", "", "alternate rpm-build-config.yaml path, relative to the repo root")
 	_ = fs.Parse(args)
 
 	pos := fs.Args()
@@ -438,22 +482,25 @@ In-container individual steps (rpmbuild user):
   install-srpm [flags] <label> | apply-patches [flags] <label> | rpmbuild [flags] <label> | collect [flags] <label>
 
 Flags:
-  -c path                       use an alternate config file (relative to repo root) instead of config.yaml
+  -c path                       use an alternate config file (relative to repo root) instead of rpm-build-config.yaml
 
-Build a src.rpm from a mysql-server git tag instead of downloading Oracle's
-official src.rpm (see go/gitsteps; scaffolding, src.rpm only for now):
+Build directly from a mysql-server git tag instead of downloading Oracle's
+official src.rpm (see go/gitsteps):
 
 Host:
-  git-build-one [flags] <os> <tag>   launch a Docker container to build <tag> on <os>
+  git-build-src-rpm [flags] <os> <tag>   launch a Docker container, produce a src.rpm only
+  git-build-rpms [flags] <os> <tag>      launch a Docker container, produce the full binary RPM set
 
 In-container orchestration:
-  git-run [flags] <tag>              root OS-prep, then drives the steps below
+  git-src-rpm-build [flags] <tag>        root OS-prep, then git-clone/configure/assemble-src-rpm
+  git-all-rpms-build [flags] <tag>       root OS-prep, then the full pipeline below
 
-In-container individual steps (rpmbuild user):
-  git-clone [flags] <tag> | git-configure [flags] <tag> | git-assemble-srpm [flags] <tag>
+In-container individual steps (rpmbuild user unless noted):
+  git-clone [flags] <tag> | git-apply-patches [flags] <tag> | git-configure [flags] <tag> | git-assemble-src-rpm [flags] <tag>
+  git-stage [flags] <tag> | git-builddeps [flags] <tag> (root) | git-rpmbuild [flags] <tag>
 
 Flags:
-  -o dir                         output directory for the produced src.rpm (default built-from-git)
+  -o dir                         output directory for the produced RPM(s) (default built)
   -no-bison                      skip the pre-generated bison output (see docs/srpm-tarball-differs-from-git-tag.md)
 
 Other:

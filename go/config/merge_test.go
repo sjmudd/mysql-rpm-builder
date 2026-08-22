@@ -16,13 +16,13 @@ import (
 func boolPtr(b bool) *bool { return &b }
 
 // mergeFixtureDir copies the merge testdata fixture (images.yaml +
-// config.yaml) into a fresh temp dir, since MergeBuild mutates config.yaml
-// in place (plus writes a timestamped backup) and tests must not touch the
-// checked-in fixture.
+// rpm-build-config.yaml) into a fresh temp dir, since MergeBuild mutates
+// rpm-build-config.yaml in place (plus writes a timestamped backup) and
+// tests must not touch the checked-in fixture.
 func mergeFixtureDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	for _, name := range []string{"images.yaml", "config.yaml"} {
+	for _, name := range []string{"images.yaml", "rpm-build-config.yaml"} {
 		data, err := os.ReadFile(filepath.Join("testdata", "merge", name))
 		if err != nil {
 			t.Fatalf("reading fixture %s: %v", name, err)
@@ -323,7 +323,7 @@ func TestMergeBuildPreservesSourceComments(t *testing.T) {
 }
 
 func TestEntryLinesFor(t *testing.T) {
-	content, err := os.ReadFile(filepath.Join("testdata", "merge", "config.yaml"))
+	content, err := os.ReadFile(filepath.Join("testdata", "merge", "rpm-build-config.yaml"))
 	if err != nil {
 		t.Fatalf("reading fixture: %v", err)
 	}
@@ -368,7 +368,7 @@ func TestEntryLinesForWithLeadingComment(t *testing.T) {
 }
 
 func TestEntryLinesForNotFound(t *testing.T) {
-	content, err := os.ReadFile(filepath.Join("testdata", "merge", "config.yaml"))
+	content, err := os.ReadFile(filepath.Join("testdata", "merge", "rpm-build-config.yaml"))
 	if err != nil {
 		t.Fatalf("reading fixture: %v", err)
 	}

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-2-Clause
 // license that can be found in the LICENSE file.
 
-// Package logx provides UTC-timestamped logging that mirrors the log() helpers
-// from the original bash scripts and can optionally tee output to a logfile.
+// Package logx provides UTC-timestamped logging and can optionally tee
+// output to a logfile.
 package logx
 
 import (

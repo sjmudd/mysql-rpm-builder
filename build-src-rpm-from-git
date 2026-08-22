@@ -1,0 +1,26 @@
+#!/bin/sh
+#
+# Thin wrapper, mirroring build-one, around the mysql-rpm-builder binary's
+# git-build-src-rpm subcommand: builds a src.rpm directly from a
+# mysql-server git tag, without ever downloading Oracle's official src.rpm.
+#
+#     ./build-src-rpm-from-git [-o dir] [-no-bison] <os> <tag>
+#     e.g. ./build-src-rpm-from-git ol10 mysql-9.7.1
+#
+# For a full binary RPM set instead of just a src.rpm, see
+# build-rpms-from-git.
+#
+# See `mysql-rpm-builder git-build-src-rpm -h`-equivalent usage in
+# go/cmd/main.go and go/gitsteps for the implementation. Build the binary
+# first with: go build -o mysql-rpm-builder ./go/cmd
+#
+dir=$(cd "$(dirname "$0")" && pwd)
+bin=$dir/mysql-rpm-builder
+
+if [ ! -x "$bin" ]; then
+	echo "ERROR: $bin not found or not executable; build it with:" >&2
+	echo "    (cd $dir && go build -o mysql-rpm-builder ./go/cmd)" >&2
+	exit 1
+fi
+
+exec "$bin" git-build-src-rpm "$@"

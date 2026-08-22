@@ -1,137 +1,161 @@
-# MySQL rpm (re)builder
+# MySQL RPM (re)builder
 
-## Why this exists
+Reproducible MySQL RPM builds, from a bare OS image or directly from git,
+with the build environment (packages, repos, patches) fully declared in
+YAML instead of assumed. Built because MySQL's own `BuildRequires:` has
+repeatedly been incomplete on specific RHEL versions, with no public,
+repeatable process to reproduce an official build or test a patched one.
 
-Building MySQL RPMs from a clean, minimal environment shouldn't be
-guesswork. In practice, the official `BuildRequires:` in `mysql.spec.in`
-has repeatedly been incomplete (missing packages needed on specific RHEL
-versions), and there's no public, repeatable process documented for
-reproducing an official build, or for building a patched version of your
-own. This repo makes both fully explicit and repeatable: given a known
-starting point (a bare OS Docker image), it declares exactly what gets
-installed and exactly how the rpm gets built, driven entirely by YAML
-config and a single self-contained Go binary.
+## Workflows
 
-Feedback welcome — `sjmudd` at `pobox.com`, or file an
-[issue](https://github.com/sjmudd/mysql-rpm-builder/issues/new).
+| I want to... | Use |
+|---|---|
+| Build official MySQL RPMs from a src.rpm | `build-one` |
+| Test a candidate fix before it's an official release | `build-src-rpm-from-git`, then feed the result to `build-one` |
+| Build a full custom RPM set straight from a git ref/fork | `build-rpms-from-git` |
 
-## What it does
+All three run in a `--rm` Docker container, as a non-root build user, from a
+declared package list — nothing implicit from the host or a cached image
+state.
 
-- **Build binary rpms from a src.rpm** — normally the official one — in a
-  container, with the build environment (packages, repos) fully declared
-  rather than assumed.
-- **Build a src.rpm directly from a mysql-server git tag, branch, or fork**
-  (`build-rpm-from-git`) — useful for testing a candidate fix before it's
-  an official release, since there's no official src.rpm to point at yet.
-- **Build a patched version** of a src.rpm (a spec patch and/or a source
-  patch — either the official one, or the one you just built from git),
-  same repeatable process.
+## Configuration
 
-## Quick start
+Three YAML files, layered:
 
-Two YAML files drive everything, layered **OS → MySQL version**:
-
-- **`images.yaml`** — one entry per OS: which container image, and its repo
-  setup (what to enable, what EPEL-equivalent package to install first).
-- **`config.yaml`** — the build matrix: one entry per `(os, label)`, each
-  fully explicit — its src.rpm URL, and how build deps get installed:
-
-  ```yaml
-  oses:
-    ol10:
-      builds:
-        9.7.1:
-          srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el10.src.rpm
-          auto_install_dependencies: true   # yum-builddep resolves BuildRequires
-  ```
-
-With that in place:
-
-```
-make                            # fmt, vet, lint, build -> ./mysql-rpm-builder
-./build-one ol10 9.7.1          # build MySQL 9.7.1 for Oracle Linux 10
-./build-one -n ol10 9.7.1       # dry run: print the docker command, don't run it
-./build-one -test ol10 9.7.1    # stop as soon as compiling starts (fast sanity check)
+**`images.yaml`** — one entry per OS: container image, repos to enable.
+```yaml
+oses:
+  ol10:
+    image: oraclelinux:10
+    repos:
+      enable: [ol10_codeready_builder, ol10_u1_developer_EPEL]
+      epel_packages: [oracle-epel-release-el10]
 ```
 
-Output lands in `built/<os><major>__<label>/`; logs (including a package
-list snapshot before and after the build) in `log/`.
+**`git-build-config.yaml`** — only for the two git-based commands; not used by
+`build-one`. Three tiers: universal bootstrap tooling, this-tag's extra
+`cmake configure` needs, and (full-build only) a patch for a gap in the
+spec's own declared `BuildRequires:`.
+```yaml
+oses:
+  ol10:
+    minimal_git_packages: [bison, cmake, gcc, gcc-c++, git, make, rpm-build, yum-utils]
+    builds:
+      mysql-9.7.1:
+        src_rpm_build_packages: [gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++]
+        all_rpms_extra_packages: []   # only if yum-builddep against the real spec still misses something
+```
 
-`build-rpm-from-git` builds a src.rpm the same way but directly from a git
-ref instead of an official download — for when there's no official src.rpm
-yet (an unreleased branch, a patch you're testing). It has its own third
-config file, **`git-build-deps.yaml`** (the bootstrap packages `cmake
-configure` needs before any real spec exists to run `yum-builddep`
-against):
+**`rpm-build-config.yaml`** — used by `build-one`: one entry per `(os, label)`, its
+src.rpm and how deps get installed.
+```yaml
+oses:
+  ol10:
+    builds:
+      9.7.1:
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el10.src.rpm
+        auto_install_dependencies: true   # yum-builddep resolves BuildRequires
+```
+
+To build a patched src.rpm instead (spec patch, source patch, or both), add
+`patches:` and drop the files under `config/<label>/`:
+```yaml
+oses:
+  ol10:
+    builds:
+      9.7.1-hyp:
+        srpm: https://dev.mysql.com/get/Downloads/MySQL-9.0/mysql-community-9.7.1-1.el10.src.rpm
+        auto_install_dependencies: true
+        patches: [SPECS/mysql.spec.patch, SOURCES/000.hypergraph_optimizer_enable.diff]
+```
+```
+config/9.7.1-hyp/
+  SPECS/mysql.spec.patch       # applied to the extracted spec with patch -p0
+  SOURCES/000.hypergraph_optimizer_enable.diff   # copied in; the spec patch adds the Patch0:/%patch0 directive
+```
+
+The git-based commands can be patched too, via `git-build-config.yaml`'s own
+`patches:` list and `config/git-patches/<tag>/` — same idea, different
+target file and diff format (it patches the raw `mysql.spec.in` template in
+the freshly cloned tree via `git apply`, before `cmake configure` runs, not
+the already-rendered spec `build-one` patches). See
+[`REFERENCE.md`](REFERENCE.md#patching-a-git-based-build) for the exact
+differences.
+
+Full schema and every field: [`REFERENCE.md`](REFERENCE.md).
+
+## Example invocations
 
 ```
-./build-rpm-from-git ol10 mysql-9.7.1                            # from an official release tag
-./build-rpm-from-git -repo <fork url> -ref <branch> ol9 26.7.0   # from a fork/branch, still labelled by its real version
+make                              # fmt, vet, lint, build -> ./mysql-rpm-builder
+
+# from a src.rpm
+./build-one ol10 9.7.1            # build MySQL 9.7.1 for Oracle Linux 10
+./build-one -n ol10 9.7.1         # dry run: print the docker command, don't run it
+./build-one -test ol10 9.7.1      # stop as soon as compiling starts (fast sanity check)
+
+# src.rpm only, straight from git
+./build-src-rpm-from-git ol10 mysql-9.7.1
+./build-src-rpm-from-git -repo <fork url> -ref <branch> ol9 26.7.0
+
+# full RPM set, straight from git, no src.rpm round trip
+./build-rpms-from-git ol10 mysql-9.7.1
 ```
 
-Output lands in `built-from-git/<os><major>__<tag>/` — feed that src.rpm
-back into `config.yaml` (`srpm: file:///data/built-from-git/...`) to run it
-through `build-one` like any other.
-
-See [`REFERENCE.md`](REFERENCE.md) for the full command reference, config
-schema, individual debugging steps, and the git-tag build path's internals.
+Output: `built/build-one/<os>__<label>/`, `built/git-build-src-rpm/<os>__<tag>/`,
+`built/git-build-rpms/<os>__<tag>/`. Logs (including a package list snapshot
+before/after) in the matching `log/<same-name>/`.
 
 ## When a build fails
 
-The most common cause is an incomplete `BuildRequires:` in the spec —
-`yum-builddep` installs what's *declared*, and if a package that's
-actually needed isn't declared, the build fails, sometimes only after a
-long compile (see "Fixing the bug" below for how to tell these apart).
+Usually an incomplete `BuildRequires:` — `yum-builddep` installs what's
+*declared*, and a package the build actually needs but the spec doesn't ask
+for fails, sometimes only after a long compile.
 
-1. Read the error. A repo/package not found (`No match for argument: ...`)
-   usually means a repo isn't enabled — check `images.yaml`'s `repos:` for
-   that OS. A missing package deeper into the build usually means the spec
-   itself needs it and doesn't ask for it.
-2. Add the missing package(s) to that build's `packages:` list in
-   `config.yaml`, alongside `auto_install_dependencies: true`, and rebuild.
-   This gets you a working build quickly, but it's a local workaround, not
-   a fix — anyone building from a clean environment elsewhere hits the same
-   failure.
-3. Use `./build-one -test <os> <label>` (stop once compiling starts) or
-   `-until '<pattern>'` / `-timeout <dur>` to iterate quickly instead of
-   waiting hours per attempt while you find the right package list.
+1. Read the error. A repo/package not found means a repo isn't enabled —
+   check `images.yaml`. A missing package deeper into the build means the
+   spec needs it and doesn't declare it.
+2. Add it to that build's `packages:` in `rpm-build-config.yaml` (with
+   `auto_install_dependencies: true`) and rebuild — a working local
+   workaround, not a fix; anyone building elsewhere hits the same failure.
+3. Use `-test`, `-until '<pattern>'`, or `-timeout <dur>` to iterate quickly
+   instead of waiting hours per attempt.
 
-## Fixing the actual bug and filing a report
+## Reporting an upstream bug
 
-If the build only fails because `BuildRequires:` is genuinely incomplete,
-the real fix belongs in `mysql-server`'s
-`packaging/rpm-oel/mysql.spec.in`, not just in this repo's `config.yaml`.
-Workflow, based on bugs.mysql.com/120895:
+If `BuildRequires:` is genuinely incomplete, the real fix belongs in
+`mysql-server`'s `packaging/rpm-oel/mysql.spec.in`. Workflow (based on
+bugs.mysql.com/120895):
 
-1. Patch `mysql.spec.in` on a branch in your own `mysql-server` fork.
-2. Build a src.rpm from that branch without needing an official release:
-   `./build-rpm-from-git -repo <your fork URL> -ref <branch> <os> <version>`
-   (`<version>` still needs to match the real `MYSQL_VERSION` at that
-   commit — see [`REFERENCE.md`](REFERENCE.md)).
-3. Point a `config.yaml` entry at the result (`srpm: file:///data/built-from-git/...`)
-   with **no** `packages:` override — just `auto_install_dependencies: true`
-   — and run a full `./build-one`. If it passes with nothing manually
-   added, that's your proof the spec fix is complete, not just a working
-   local hack.
-4. Also confirm the *un*patched build actually fails the same way, so the
-   report shows both sides (before/after) rather than just an assertion.
+1. Patch `mysql.spec.in` on a branch in your own fork.
+2. `./build-src-rpm-from-git -repo <fork url> -ref <branch> <os> <version>`
+   (`<version>` must match the real `MYSQL_VERSION` at that commit).
+3. Point a `rpm-build-config.yaml` entry at the result
+   (`srpm: file:///data/built/git-build-src-rpm/...`) with just
+   `auto_install_dependencies: true` — no manual `packages:` — and run
+   `./build-one`. Passing with nothing added proves the spec fix is
+   complete, not just a working local hack.
+4. Confirm the *un*patched build fails the same way, so the report shows
+   both sides.
 5. File at [bugs.mysql.com](https://bugs.mysql.com/) with the reproduction
-   (OS/version, the missing package, the exact error) and the spec diff.
+   and the spec diff.
 
-`docs/` has worked examples of this from real bugs found this way,
-including the full before/after evidence trail for 120895.
+`docs/` has worked examples, including the full before/after trail for 120895.
 
-## Related
+## Reference, feedback, prior art
 
-- [`REFERENCE.md`](REFERENCE.md) — full command reference and internals
+- [`REFERENCE.md`](REFERENCE.md) — full command reference, config schema,
+  individual debugging steps, git-tag build internals.
 - [`docs/`](docs/) — case studies (git-tag build gotchas, src.rpm vs. git
-  tarball differences, etc.)
-- Some bugs found via this process:
+  tarball differences, etc.).
+- Feedback welcome — `sjmudd` at `pobox.com`, or file an
+  [issue](https://github.com/sjmudd/mysql-rpm-builder/issues/new).
+- Bugs found via this process:
   [#118796](https://bugs.mysql.com/118796),
   [#115484](https://bugs.mysql.com/115484),
   [#111159](https://bugs.mysql.com/111159),
   [#111088](https://bugs.mysql.com/111088),
-  [#120895](https://bugs.mysql.com/120895)
+  [#120895](https://bugs.mysql.com/120895).
 - Not MySQL-specific — the same approach applies to rebuilding any rpm.
   [bacula-rpm-builder](https://github.com/sjmudd/bacula-rpm-builder/) was
   the original inspiration, building from a git tree instead of a src.rpm.

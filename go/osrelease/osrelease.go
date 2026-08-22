@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-2-Clause
 // license that can be found in the LICENSE file.
 
-// Package osrelease parses /etc/os-release to determine the distribution id and
-// major version, mirroring get_os_and_version() from the original build script.
+// Package osrelease parses /etc/os-release to determine the distribution id
+// and major version.
 package osrelease
 
 import (

@@ -5,8 +5,7 @@
 // Package steps implements the individual stages of a build as small, composable
 // functions. Each stage is independently runnable (via its own subcommand) so a
 // failed step can be re-run in a debug container without repeating the expensive
-// rpmbuild. The stages are direct ports of the two-stage logic in the original
-// bash `build` script.
+// rpmbuild.
 package steps
 
 import (
@@ -90,9 +89,15 @@ func (r *Runner) elDefine() string { return fmt.Sprintf("el%d", r.OS.Major) }
 func (r *Runner) rpmDefine() string { return r.elDefine() + " 1" }
 
 // srpmsDir / logDir / builtDir are the persisted data directories.
-func (r *Runner) srpmsDir() string { return filepath.Join(r.DataDir, "SRPMS") }
-func (r *Runner) logDir() string   { return filepath.Join(r.DataDir, "log") }
-func (r *Runner) builtDir() string { return filepath.Join(r.DataDir, "built") }
+//
+// logDir and builtDir both include a "build-one" segment so this
+// download-based path's logs/output can never collide with the git-based
+// paths' -- all three build types (build-one, git-build-src-rpm,
+// git-build-rpms) share the same <DataDir>/{log,built}/ bases, partitioned
+// by which command produced the result.
+func (r *Runner) srpmsDir() string { return filepath.Join(r.DataDir, config.SRPMSCacheDir) }
+func (r *Runner) logDir() string   { return filepath.Join(r.DataDir, config.LogDir, "build-one") }
+func (r *Runner) builtDir() string { return filepath.Join(r.DataDir, config.BuiltDir, "build-one") }
 
 // ---- root stages -----------------------------------------------------------
 
@@ -188,8 +193,7 @@ func (r *Runner) FixAnnobin() error { return osprep.FixAnnobin() }
 // OSTweaks runs any optional per-build shell workarounds (escape hatch).
 func (r *Runner) OSTweaks() error { return osprep.OSTweaks(r.Cfg.Build.Tweaks) }
 
-// CreateUser creates the rpmbuild user and the persisted data directories,
-// porting config/ossetup/create_rpmbuild_user.
+// CreateUser creates the rpmbuild user and the persisted data directories.
 func (r *Runner) CreateUser() error {
 	return osprep.CreateUser(BuildUser, []string{r.srpmsDir(), r.logDir(), r.builtDir()})
 }
@@ -207,12 +211,12 @@ func rpmbuildHome() (string, error) {
 
 // InstallSRPM downloads (with caching) and installs the source RPM. A
 // file:// URL (e.g. for a locally built src.rpm, such as one produced by
-// ./build-rpm-from-git, rather than one published at a real download URL)
-// installs directly from that path instead -- it is never cached under
-// SRPMS/, since it isn't a download in the first place. This runs inside
-// the container, so the path must be container-visible, not host-relative:
-// file:///data/built-from-git/<os><major>__<label>/<name>.src.rpm, not
-// file://built-from-git/... (see config.Build.SRPM).
+// ./build-src-rpm-from-git, rather than one published at a real download
+// URL) installs directly from that path instead -- it is never cached
+// under SRPMS/, since it isn't a download in the first place. This runs
+// inside the container, so the path must be container-visible, not
+// host-relative: file:///data/built/git-build-src-rpm/<os><major>__<label>/<name>.src.rpm,
+// not a host-relative path (see config.Build.SRPM).
 func (r *Runner) InstallSRPM() error {
 	url := r.Cfg.Build.SRPM
 	if path, ok := strings.CutPrefix(url, "file://"); ok {
@@ -239,7 +243,7 @@ func (r *Runner) InstallSRPM() error {
 }
 
 // ApplyPatches copies any custom SPECS/SOURCES for this label into ~/rpmbuild
-// and applies spec patches, porting install_custom_patches.
+// and applies spec patches.
 func (r *Runner) ApplyPatches() error {
 	home, err := rpmbuildHome()
 	if err != nil {
@@ -278,8 +282,7 @@ func (r *Runner) ApplyPatches() error {
 	return nil
 }
 
-// RPMBuild records the end-state package list and then runs rpmbuild, porting
-// rpmbuild_rpms.
+// RPMBuild records the end-state package list and then runs rpmbuild.
 //
 // The rpm -qa listing is captured *before* rpmbuild -ba: no packages are
 // installed during the build itself, so the installed set is already final once
@@ -308,8 +311,7 @@ func (r *Runner) RPMBuild() error {
 	return buildErr
 }
 
-// Collect moves the built RPMs to the persisted built/ directory, porting the
-// tail of build_rpm_stage_logged.
+// Collect moves the built RPMs to the persisted built/ directory.
 func (r *Runner) Collect() error {
 	home, err := rpmbuildHome()
 	if err != nil {

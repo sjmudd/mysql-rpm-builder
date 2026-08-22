@@ -1,27 +1,49 @@
-# Bootstrap package list for the git-* subcommands 
-# enough for `cmake configure` to succeed against a plain git checkout,
-# before any real mysql.spec exists to run yum-builddep against.
-# Required per OS -- there is no spec to derive this list from at this point,
-# so it can't be auto-determined; see go/gitsteps for how it's loaded and used.
+# Package lists for the git-* subcommands, split into three tiers that
+# answer different questions at different points in the pipeline. Conflating
+# them made it impossible to tell whether a listed package is genuinely
+# needed by every MySQL version on an OS, or just happened to be needed once
+# and got left in a shared list -- see git history for the single flat
+# `packages:` list this replaced.
 #
-# libaio-devel is a hard `cmake configure` requirement on Linux (see
-# cmake/build_configurations/mysql_release.cmake), not an optional feature
-# quietly skipped when absent. The rest of this list mirrors the official
-# spec's non-packaging-only BuildRequires (skipping patchelf/dwz/annobin*/
-# elfutils, which matter only for binary-RPM stripping, not for cmake
-# configure or `rpmbuild -bs`) -- git-configure separately runs yum-builddep
-# against its own cmake-generated mysql.spec to top up anything this list
-# misses for a full binary build (not yet implemented; -bs alone doesn't need
-# it).
+# oses.<os>.minimal_git_packages
+#   Tier 2: universal tooling needed for ANY MySQL git tag's `cmake
+#   configure` to run on this OS, before any real mysql.spec exists to run
+#   yum-builddep against -- there is no spec to derive this list from at
+#   this point, so it can't be auto-determined. Same for every tag on this
+#   OS; if a package here turns out to only be needed by some tags, move it
+#   to src_rpm_build_packages instead.
 #
-# oses.<os>.packages is the OS-stable base: tooling and libs that don't vary
-# by MySQL version. oses.<os>.builds.<tag>.packages, if present, is added on
-# top for that exact tag only -- currently just the compiler toolchain (see
-# below), the one thing empirically found to vary per MySQL release rather
-# than per OS. Unlike config.yaml, this is deliberately additive rather than
-# each build entry being fully self-contained: the base list is long and
-# genuinely OS-level (repo/library packages), so repeating it per tag would
-# be pure noise for the part that doesn't change.
+#   libaio-devel is a hard `cmake configure` requirement on Linux (see
+#   cmake/build_configurations/mysql_release.cmake), not an optional
+#   feature quietly skipped when absent. The rest mirrors the official
+#   spec's non-packaging-only BuildRequires (skipping patchelf/dwz/
+#   annobin*/elfutils, which matter only for binary-RPM stripping, not for
+#   cmake configure or `rpmbuild -bs`).
+#
+# oses.<os>.builds.<tag>.src_rpm_build_packages
+#   Tier 3: this specific tag's own `cmake configure` needs, on top of
+#   minimal_git_packages -- used by both git-build-src-rpm and
+#   git-build-rpms, since both run `cmake configure` before either
+#   produces anything. The one thing empirically found to vary per MySQL
+#   release rather than per OS is the compiler toolchain (see below).
+#
+# oses.<os>.builds.<tag>.all_rpms_extra_packages
+#   Tier 4: patches a gap in this tag's spec's own declared `BuildRequires:`
+#   -- used only by git-build-rpms's BuildDeps step (`yum-builddep` against
+#   the real, cmake-rendered spec), never by git-build-src-rpm, since `-bs`
+#   only assembles a source tarball + spec and never evaluates
+#   BuildRequires at all. Empty until a real gap is found; don't
+#   pre-populate speculatively -- same reactive, verify-first discipline as
+#   the compiler-toolset entries below.
+#
+# oses.<os>.builds.<tag>.patches
+#   Unrelated to the four tiers above: bare filenames (no path component)
+#   applied via `git apply` against the freshly cloned tree from
+#   config/git-patches/<tag>/, in list order, before `cmake configure` runs
+#   -- so a patch to packaging/rpm-oel/mysql.spec.in affects the spec cmake
+#   renders. Shared by git-build-src-rpm and git-build-rpms. See
+#   REFERENCE.md for how this differs from build-one's SPECS/SOURCES
+#   patching (different target file, different patch format).
 #
 # On gcc/compiler packages: Oracle picks a newer gcc-toolset (not the base
 # OS's static one) to build with on el8/el9, because MySQL major versions
@@ -29,7 +51,7 @@
 # version is needed is a property of the MySQL release being built, NOT of
 # the OS: different MySQL versions have depended on different gcc-toolset
 # generations over time (anywhere from ~10 through the current one), which
-# is exactly why this is a per-tag override and not part of the OS base list
+# is exactly why this is a per-tag entry and not part of minimal_git_packages
 # above. Determine which one empirically per tag rather than guessing: an
 # el8/el9 `cmake configure` run with no gcc-toolset installed at all fails
 # with an explicit, actionable error naming the exact one needed --
@@ -50,7 +72,7 @@
 # activation (PATH/CC/CXX/scl enable) needed in go/gitsteps.
 oses:
   ol8:
-    packages: [bison, cmake, cyrus-sasl-devel, git, krb5-devel, libaio-devel,
+    minimal_git_packages: [bison, cmake, cyrus-sasl-devel, git, krb5-devel, libaio-devel,
       libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel,
       libudev-devel, make, ncurses-devel, numactl-devel, openldap-devel,
       openssl-devel, pkgconfig(systemd), rpcgen, rpm-build, systemd, yum-utils]
@@ -62,7 +84,7 @@ oses:
       # centos8/ol8 8.4.4-8.4.6) and the same toolset ol9/mysql-8.0.46 and
       # ol9/mysql-8.4.10 landed on above.
       mysql-8.4.7:
-        packages: [gcc-toolset-12-annobin-annocheck,
+        src_rpm_build_packages: [gcc-toolset-12-annobin-annocheck,
           gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils,
           gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++]
       # Confirmed empirically 2026-07-29 per this file's header-comment
@@ -72,17 +94,17 @@ oses:
       # exact -o/positional tag value used, decoupled from the actual git
       # ref via -repo/-ref (built from the bug/120895 fork branch).
       26.7.0:
-        packages: [gcc-toolset-14-annobin-annocheck,
+        src_rpm_build_packages: [gcc-toolset-14-annobin-annocheck,
           gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils,
           gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++]
   ol9:
-    packages: [bison, cmake, cyrus-sasl-devel, git, krb5-devel, libaio-devel,
+    minimal_git_packages: [bison, cmake, cyrus-sasl-devel, git, krb5-devel, libaio-devel,
       libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel,
       libudev-devel, make, ncurses-devel, numactl-devel, openldap-devel,
       openssl-devel, pkgconfig(systemd), rpcgen, rpm-build, systemd, yum-utils]
     builds:
       mysql-9.7.1:
-        packages: [gcc-toolset-14-annobin-annocheck,
+        src_rpm_build_packages: [gcc-toolset-14-annobin-annocheck,
           gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils,
           gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++]
       # Confirmed empirically 2026-07-29 per this file's header-comment
@@ -94,13 +116,13 @@ oses:
       # version was built from the bug/120895 fork branch, not a real
       # "mysql-26.7.0" tag).
       26.7.0:
-        packages: [gcc-toolset-14-annobin-annocheck,
+        src_rpm_build_packages: [gcc-toolset-14-annobin-annocheck,
           gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils,
           gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++]
       # Confirmed by testing that the following packages are needed
       # for the build to generate a src rpm.
       mysql-8.0.46:
-        packages: [gcc-toolset-12-annobin-annocheck,
+        src_rpm_build_packages: [gcc-toolset-12-annobin-annocheck,
           gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils,
           gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++]
       # Confirmed empirically 2026-07-25 per this file's header-comment
@@ -109,11 +131,11 @@ oses:
       # the 8.0 branch, so this isn't too surprising in hindsight, but it
       # was still verified rather than assumed).
       mysql-8.4.10:
-        packages: [gcc-toolset-12-annobin-annocheck,
+        src_rpm_build_packages: [gcc-toolset-12-annobin-annocheck,
           gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils,
           gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++]
   ol10:
-    packages: [bison, cmake, cyrus-sasl-devel, gcc, gcc-c++, git, krb5-devel,
+    minimal_git_packages: [bison, cmake, cyrus-sasl-devel, gcc, gcc-c++, git, krb5-devel,
       libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel,
       libtirpc-devel, libudev-devel, make, ncurses-devel, numactl-devel,
       openldap-devel, openssl-devel, pkgconfig(systemd), rpcgen, rpm-build,

@@ -200,7 +200,7 @@ func OSTweaks(tweaks []string) error {
 }
 
 // CreateUser creates the given build user (if absent) and the given
-// directories (owned by that user), porting config/ossetup/create_rpmbuild_user.
+// directories (owned by that user).
 func CreateUser(username string, dirs []string) error {
 	logx.Logf("### create-user: ensuring build user %q exists", username)
 	if _, err := user.Lookup(username); err != nil {

@@ -3,13 +3,15 @@
 // license that can be found in the LICENSE file.
 
 // Package config loads the declarative build configuration (images.yaml +
-// config.yaml) and resolves a concrete build for a given (os, label) pair.
+// rpm-build-config.yaml) and resolves a concrete build for a given
+// (os, label) pair.
 //
 // The configuration is layered OS -> MySQL version. images.yaml holds the
-// per-OS, flavour-stable definition (container image + repo setup); config.yaml
-// holds a chronological sequence of fully-explicit build entries per OS (source
-// RPM URL + package list + optional shell tweaks). There is deliberately no
-// inheritance or per-OS override magic: each build entry stands alone.
+// per-OS, flavour-stable definition (container image + repo setup);
+// rpm-build-config.yaml holds a chronological sequence of fully-explicit
+// build entries per OS (source RPM URL + package list + optional shell
+// tweaks). There is deliberately no inheritance or per-OS override magic:
+// each build entry stands alone.
 package config
 
 import (
@@ -22,11 +24,29 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Top-level directory names, relative to the working directory (which is
+// /data inside the build container). Defined here (not in go/steps or
+// go/gitsteps) specifically so both can reference the same constants
+// without go/gitsteps importing go/steps, which it deliberately never does.
+const (
+	// LogDir and BuiltDir are shared by all three build types, each
+	// partitioning its own subdirectory under them (e.g. log/build-one/,
+	// built/git-build-rpms/) so their logs/output never collide.
+	LogDir   = "log"
+	BuiltDir = "built"
+	// SRPMSCacheDir is go/steps' own top-level cache of downloaded src.rpm
+	// files -- unrelated to rpmbuild's fixed "SRPMS" subdirectory inside
+	// ~/rpmbuild (that name is rpmbuild's own contract, not ours to name;
+	// see gitsteps.go's own SRPMS-subdirectory handling, which is kept
+	// separate from this constant on purpose).
+	SRPMSCacheDir = "SRPMS"
+)
+
 // Default file locations, relative to the working directory (which is /data
 // inside the build container).
 const (
 	DefaultImagesFile = "images.yaml"
-	DefaultConfigFile = "config.yaml"
+	DefaultConfigFile = "rpm-build-config.yaml"
 )
 
 // Repos describes the repository setup for an OS. Names in Enable are enabled
@@ -54,11 +74,12 @@ type OSDef struct {
 type Build struct {
 	// SRPM is normally an https:// download URL (e.g. dev.mysql.com). It may
 	// also be a file:// URL, for a locally built src.rpm that was never
-	// published anywhere -- e.g. one produced by ./build-rpm-from-git under
-	// built-from-git/<os><major>__<label>/. steps.Runner.InstallSRPM
-	// installs directly from a file:// path (no download/caching), and
-	// since install-srpm always runs inside the container, the path must be
-	// container-visible: /data/built-from-git/<os><major>__<label>/<name>.src.rpm,
+	// published anywhere -- e.g. one produced by ./build-src-rpm-from-git
+	// under built/git-build-src-rpm/<os><major>__<label>/.
+	// steps.Runner.InstallSRPM installs directly from a file:// path (no
+	// download/caching), and since install-srpm always runs inside the
+	// container, the path must be container-visible:
+	// /data/built/git-build-src-rpm/<os><major>__<label>/<name>.src.rpm,
 	// not a host-side relative path. See ol10-9.7.1-own-built-src-rpm.yaml
 	// for a worked example.
 	SRPM string `yaml:"srpm"`
@@ -113,7 +134,7 @@ type Resolved struct {
 }
 
 // Load reads and parses images.yaml and a config file from dir.
-// If configFile is empty, DefaultConfigFile ("config.yaml") is used.
+// If configFile is empty, DefaultConfigFile ("rpm-build-config.yaml") is used.
 func Load(dir, configFile string) (*Config, error) {
 	if configFile == "" {
 		configFile = DefaultConfigFile

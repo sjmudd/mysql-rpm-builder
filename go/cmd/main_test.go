@@ -10,13 +10,14 @@ import (
 	"github.com/sjmudd/mysql-rpm-builder/go/host"
 )
 
-// Deliberately limited to the pure docker-argv construction: runGitBuildOne
+// Deliberately limited to the pure docker-argv construction: runGitHostBuild
 // itself shells out to docker and needs a real container to exercise.
 
-func TestGitBuildOneDockerArgs(t *testing.T) {
-	got := gitBuildOneDockerArgs(
+func TestGitDockerArgsSrcRPM(t *testing.T) {
+	got := gitDockerArgs(
 		"/data", "oraclelinux:9", "26.7.0", "abcde", "built-from-git",
 		false, "https://github.com/sjmudd/mysql-server.git", "bug/120895",
+		"git-src-rpm-build",
 	)
 	want := []string{
 		"run",
@@ -27,7 +28,7 @@ func TestGitBuildOneDockerArgs(t *testing.T) {
 		"-v", "/data:/data",
 		"-w", "/data",
 		"oraclelinux:9",
-		host.ContainerBinary, "git-run", "-o", "built-from-git",
+		host.ContainerBinary, "git-src-rpm-build", "-o", "built-from-git",
 		"-repo", "https://github.com/sjmudd/mysql-server.git",
 		"-ref", "bug/120895",
 		"26.7.0",
@@ -35,12 +36,13 @@ func TestGitBuildOneDockerArgs(t *testing.T) {
 	assertArgsEqual(t, got, want)
 }
 
-func TestGitBuildOneDockerArgsSkipBison(t *testing.T) {
+func TestGitDockerArgsAllRPMsSkipBison(t *testing.T) {
 	// Regression-shaped test: -no-bison must land between -o and -repo/-ref,
 	// not get dropped when combined with the repo/ref flags.
-	got := gitBuildOneDockerArgs(
+	got := gitDockerArgs(
 		"/data", "oraclelinux:10", "mysql-9.7.1", "abcde", "built-from-git",
 		true, "https://github.com/mysql/mysql-server.git", "mysql-9.7.1",
+		"git-all-rpms-build",
 	)
 	want := []string{
 		"run",
@@ -51,7 +53,7 @@ func TestGitBuildOneDockerArgsSkipBison(t *testing.T) {
 		"-v", "/data:/data",
 		"-w", "/data",
 		"oraclelinux:10",
-		host.ContainerBinary, "git-run", "-o", "built-from-git",
+		host.ContainerBinary, "git-all-rpms-build", "-o", "built-from-git",
 		"-no-bison",
 		"-repo", "https://github.com/mysql/mysql-server.git",
 		"-ref", "mysql-9.7.1",

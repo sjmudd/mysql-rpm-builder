@@ -28,6 +28,8 @@ sufficient — see the comments above the `$(BINARY):` rule in `Makefile`
 for what was tried and why it didn't work. This needs `musl-gcc` installed
 on the build host first (Ubuntu/Debian: `sudo apt install musl-tools`).
 
+### From a src.rpm (`build-one`)
+
 | Command | Where | Purpose |
 |---|---|---|
 | `build-one [-n] [-c <config>] <os> <label>` | host | launch a Docker container and build `<label>` on `<os>` |
@@ -36,7 +38,9 @@ on the build host first (Ubuntu/Debian: `sudo apt install musl-tools`).
 | `refresh [-c <config>] <label>` / `setup-repos` / `install-packages` / `fix-annobin` / `os-tweaks` / `create-user` / `install-builddeps` | container (root) | individual OS-prep / build-dep steps |
 | `install-srpm [-c <config>] <label>` / `apply-patches` / `rpmbuild` / `collect` | container (rpmbuild) | individual build steps |
 
-All subcommands optionally accept `-c <config>` to use an alternate config file (relative to the repo root) instead of the default `config.yaml`.
+All subcommands optionally accept `-c <config>` to use an alternate config
+file (relative to the repo root) instead of the default
+`rpm-build-config.yaml`.
 
 Every step is individually runnable, which makes debugging a failed build
 much easier (see [Building in individual steps](#building-in-individual-steps)).
@@ -44,16 +48,16 @@ much easier (see [Building in individual steps](#building-in-individual-steps)).
 A thin `build-one` shell wrapper is provided so the historical invocation
 still works: `./build-one ol10 9.7.1`.
 
-There's also a git-tag/branch-based build path, entirely separate from the
-src.rpm one described above — see [Building from a git tag, branch, or
-fork](#building-from-a-git-tag-branch-or-fork-instead-of-a-src-rpm).
+### From git, no src.rpm (`build-src-rpm-from-git` / `build-rpms-from-git`)
+
+Entirely separate command family — see [Building directly from git](#building-directly-from-git-instead-of-a-srcrpm).
 
 ## Which versions do I rebuild?
 
-The `config.yaml` build matrix currently covers the modern el8/el9/el10
-combinations of MySQL 8.4.x, 9.x and 26.x across Oracle Linux, Rocky Linux,
-AlmaLinux and CentOS Stream. Older el7 combinations can be added the same
-way (see [Configuration](#configuration)).
+The `rpm-build-config.yaml` build matrix currently covers the modern
+el8/el9/el10 combinations of MySQL 8.4.x, 9.x and 26.x across Oracle Linux,
+Rocky Linux, AlmaLinux and CentOS Stream. Older el7 combinations can be
+added the same way (see [Configuration](#configuration)).
 
 ## Configuration
 
@@ -61,7 +65,8 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
 
 - **`images.yaml`** — one entry per OS (flavour + major version): the
   container image and the repository setup. Repo setup is stable per OS
-  major version so it lives here once, not per MySQL version.
+  major version so it lives here once, not per MySQL version. Shared by
+  every build path (`build-one`, `build-src-rpm-from-git`, `build-rpms-from-git`).
 
   ```yaml
   oses:
@@ -72,11 +77,12 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
         epel_packages: [oracle-epel-release-el10]                 # dnf install -y
   ```
 
-- **`config.yaml`** — the build matrix, a chronological sequence of builds
-  per OS. Each `(os, version)` entry is fully explicit: its own source RPM
-  URL, how build dependencies are installed, and optional shell `tweaks`.
-  There is deliberately no inheritance — to add a new release, copy the
-  newest block for that OS and bump the version key + srpm URL.
+- **`rpm-build-config.yaml`** — used only by `build-one`: the build matrix,
+  a chronological sequence of builds per OS. Each `(os, version)` entry is
+  fully explicit: its own source RPM URL, how build dependencies are
+  installed, and optional shell `tweaks`. There is deliberately no
+  inheritance — to add a new release, copy the newest block for that OS
+  and bump the version key + srpm URL.
 
   ```yaml
   oses:
@@ -117,29 +123,34 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
 
   `srpm` is normally an `https://` download URL, but it can also be a
   `file://` URL for a locally built src.rpm with no real download URL — e.g.
-  one produced by `./build-rpm-from-git` (see below). `install-srpm` then
+  one produced by `./build-src-rpm-from-git` (see below). `install-srpm` then
   installs directly from that path (no download/caching involved). Since
   `install-srpm` always runs *inside* the container, the path must be
-  container-visible: `file:///data/built-from-git/<os><major>__<tag>/<name>.src.rpm`,
+  container-visible: `file:///data/built/git-build-src-rpm/<os><major>__<tag>/<name>.src.rpm`,
   not a host-relative one.
+
+- **`git-build-config.yaml`** — used only by the two git-based commands
+  (`build-src-rpm-from-git`, `build-rpms-from-git`); not read by
+  `build-one`. See [Building directly from git](#building-directly-from-git-instead-of-a-srcrpm)
+  for its schema.
 
 ### Adding a build
 
 1. Ensure the OS exists in `images.yaml` (image + repos).
 2. Create a test config file (e.g., `test-config.yaml`) with your new build
-   entry, or add it to `config.yaml` directly.
+   entry, or add it to `rpm-build-config.yaml` directly.
 3. Build and test it: `./build-one -c test-config.yaml <os> <version>` (or
-   `./build-one <os> <version>` if added to `config.yaml`).
+   `./build-one <os> <version>` if added to `rpm-build-config.yaml`).
 4. For a quick validation without a full build, use
    `./build-one -test -c test-config.yaml <os> <version>` to stop as soon
    as compilation starts (past cmake).
-5. Once validated, add the entry to `config.yaml` permanently (copying the
-   previous version's block is usually sufficient, but watch for compiler/
-   other changes over time).
+5. Once validated, add the entry to `rpm-build-config.yaml` permanently
+   (copying the previous version's block is usually sufficient, but watch
+   for compiler/other changes over time).
 
-The `-c <config>` flag is useful for testing new build entries without modifying
-`config.yaml`: you can prepare a separate config file, validate it works, and
-then merge it into the main config once ready.
+The `-c <config>` flag is useful for testing new build entries without
+modifying `rpm-build-config.yaml`: you can prepare a separate config file,
+validate it works, and then merge it into the main config once ready.
 
 ## Build Process
 
@@ -249,27 +260,40 @@ alternate config file.
 
 ### Output and Logging
 
-On success the binary rpms are moved to `built/<os><major>__<version>/`
-(e.g. `built/ol10__9.7.1/`), together with the container's `/etc/os-release`.
+On success the binary rpms are moved to `built/build-one/<os><major>__<version>/`
+(e.g. `built/build-one/ol10__9.7.1/`), together with the container's
+`/etc/os-release`. The two git-based commands use their own sibling
+directories under `built/` — see [Building directly from
+git](#building-directly-from-git-instead-of-a-srcrpm).
 
-Logs are written under `log/` (UTC timestamps). Because `log/`, `SRPMS/`
-and `built/` live in the mounted `$PWD` they persist even when the
-container is removed with `--rm`:
+Logs are written under `log/` (UTC timestamps), partitioned by build type
+the same way `built/` is: `log/build-one/`, `log/git-build-src-rpm/`,
+`log/git-build-rpms/`. Because `log/`, `SRPMS/` and `built/` live in the
+mounted `$PWD` they persist even when the container is removed with `--rm`.
 
-Per-run files share one identifier, `<os>__<label>__<code>__<datetime>`, where
-`<code>` is a random per-run code (also used for the container name) and
-`<datetime>` is a single timestamp generated once per run:
+`build-one`'s logs, under `log/build-one/`. Per-run files share one
+identifier, `<os>__<label>__<code>__<datetime>`, where `<code>` is a random
+per-run code (also used for the container name) and `<datetime>` is a
+single timestamp generated once per run:
 
-- `log/build-one.<os>__<label>__<code>__<datetime>.log` — host-side launcher log
-- `log/build-one.build_status` — one line per build (status, rc, elapsed)
-- `log/ossetup.<os>__<label>__<code>__<datetime>.log`,
-  `log/build.<os>__<label>__<code>__<datetime>.log` — in-container stages
-- `log/rpm-qa.init.<os>__<label>__<code>__<datetime>` — sorted package list of
+- `<os>__<label>__<code>__<datetime>.log` — host-side launcher log
+- `build_status` — one line per build (status, rc, elapsed)
+- `ossetup.<os>__<label>__<code>__<datetime>.log`,
+  `build.<os>__<label>__<code>__<datetime>.log` — in-container stages
+- `rpm-qa.init.<os>__<label>__<code>__<datetime>` — sorted package list of
   the untouched base image, before any packages are changed
-- `log/rpm-qa.post.<os>__<label>__<code>__<datetime>` — sorted end-state
+- `rpm-qa.post.<os>__<label>__<code>__<datetime>` — sorted end-state
   package list, captured just before `rpmbuild -ba` (so it is written even on an
   early `-test`/`-timeout` stop or a build failure), useful for reproducing or
   reporting a build and for comparing base images across OS versions
+
+The two git-based commands' logs, under `log/git-build-src-rpm/` and
+`log/git-build-rpms/` respectively:
+
+- `<os>__<tag>__<code>.log` — host-side launcher log
+- `git-src-rpm-build.<os>__<tag>.log` / `git-all-rpms-build.<os>__<tag>.log`
+  — in-container orchestrator log (not per-run-code-suffixed, unlike the
+  host launcher log — a second run for the same (os, tag) overwrites this one)
 
 ## A note on OS labels
 
@@ -282,16 +306,16 @@ VERSION_ID="9.3"
 ```
 
 resolves to `rocky9`. These labels are the keys used in `images.yaml` and
-`config.yaml`.
+`rpm-build-config.yaml`.
 
 ## Patching
 
 To build a patched version, create a directory `config/<label>/` (where
-`<label>` matches the build key in `config.yaml`) containing `SPECS/`
-and/or `SOURCES/`. After the src.rpm is installed, the `apply-patches`
-step copies these into `~/rpmbuild/SPECS` and `~/rpmbuild/SOURCES`, then
-applies any file matching `*patch*` in `SPECS/` to the spec file with
-`patch -p0` (in sorted order).
+`<label>` matches the build key in `rpm-build-config.yaml`) containing
+`SPECS/` and/or `SOURCES/`. After the src.rpm is installed, the
+`apply-patches` step copies these into `~/rpmbuild/SPECS` and
+`~/rpmbuild/SOURCES`, then applies any file matching `*patch*` in `SPECS/`
+to the spec file with `patch -p0` (in sorted order).
 
 Two kinds of change are supported:
 
@@ -320,8 +344,8 @@ Two kinds of change are supported:
   `~/rpmbuild/SOURCES` and applied by rpmbuild during `%prep` via the
   `Patch0:`/`%patch0` directive your spec patch added.
 
-Then add a `config.yaml` build entry keyed by `<label>` pointing at the
-base src.rpm, and build with `./build-one <os> <label>`. See
+Then add a `rpm-build-config.yaml` build entry keyed by `<label>` pointing
+at the base src.rpm, and build with `./build-one <os> <label>`. See
 `config/8.2.0.hyp/` for a complete example.
 
 Optionally, list the expected patch files on the build entry itself with
@@ -332,6 +356,12 @@ or any listed file is missing — catching a typo'd label or a misplaced
 patch file instead of silently producing an unpatched build. Omitting
 `patches` keeps the original behaviour: whatever is found under
 `config/<label>/` is applied, and a missing `config/<label>/` is a no-op.
+
+This exact patch-file mechanism (`config/<label>/SPECS`/`SOURCES`, `patch
+-p0`) is `build-one`-only. The git-based commands have their own, similar
+but not identical mechanism — see [Patching a git-based
+build](#patching-a-git-based-build) — plus `-repo`/`-ref`, for committing a
+fix to a branch in your own fork instead of a local patch file.
 
 ## Warning on differences between equivalent OS versions
 
@@ -349,7 +379,9 @@ Rebuilding the rpms takes surprisingly long, because the rpm build produces
 both the normal and the debug rpms (the latter containing debug symbols).
 On a home system (Beelink SER 4700u) this is about 2h45m using a NAS vs
 1h20m using local nvme storage — the C/C++ build reads and writes a lot, so
-storage latency matters.
+storage latency matters. Applies to both `build-one` and `build-rpms-from-git`
+(the two commands that actually run `rpmbuild -ba`); `build-src-rpm-from-git`
+only assembles a src.rpm (`rpmbuild -bs`) and is much faster.
 
 ## rpm build user
 
@@ -358,23 +390,37 @@ uid/gid, which on RH systems is 1000. There is an assumption that the
 volume mounted via docker uses the same uid/gid; if it does not, things may
 fail.
 
-## Building from a git tag, branch, or fork instead of a src.rpm
+**Known follow-up, not implemented:** pin this to the invoking host user's
+actual uid/gid (`os.Getuid()`/`os.Getgid()`) instead of relying on the
+container's default allocation, so the assumption above always holds
+regardless of the host user's uid. Would mean passing the host uid/gid into
+the container (e.g. as env vars) and using them explicitly in
+`go/osprep/osprep.go`'s `useradd`/`groupadd` calls, with a fallback for when
+they're unset and a guard against a uid/gid collision with an existing
+account in the base image.
 
-Checking the `mysql/mysql-server` repo itself confirms there's no public
-trigger for `rpmbuild` anywhere in it: `.github/workflows/` only tests and
-validates PRs, and `packaging/rpm-oel/` has the `mysql.spec.in` template plus
-the cmake plumbing that generates the real spec, but nothing that chains
-`cmake configure` → `cpack` → `rpmbuild` into an actual build. That confirms
-Oracle's own build-and-sign pipeline is private tooling, not something this
-repo can lean on — which is the whole reason it exists in the first place.
-`build-rpm-from-git` reconstructs the equivalent of that pipeline from public
-inputs only: a git ref, plus the spec's own declared `BuildRequires`,
-instead of depending on Oracle's official src.rpm download at all.
+## Building directly from git instead of a src.rpm
+
+There's no public trigger for `rpmbuild` anywhere in the `mysql/mysql-server`
+repo: `.github/workflows/` only tests and validates PRs, and
+`packaging/rpm-oel/` has the `mysql.spec.in` template plus the cmake
+plumbing that generates the real spec, but nothing that chains
+`cmake configure` → `cpack` → `rpmbuild` into an actual build. Oracle's own
+build-and-sign pipeline is private tooling — the reason this repo exists.
+Two commands reconstruct the equivalent of that pipeline from public inputs
+only: a git ref, plus the spec's own declared `BuildRequires`, instead of
+depending on Oracle's official src.rpm download at all.
+
+| Command | Produces |
+|---|---|
+| `build-src-rpm-from-git` | a src.rpm only (`rpmbuild -bs`) |
+| `build-rpms-from-git` | the full binary RPM set (`rpmbuild -ba`), no src.rpm round trip |
 
 ```
-./build-rpm-from-git [-no-bison] [-o <dir>] [-repo <url>] [-ref <name>] <os> <tag>
-e.g. ./build-rpm-from-git ol10 mysql-9.7.1
-e.g. ./build-rpm-from-git -repo https://github.com/<you>/mysql-server.git -ref bug/120895 ol9 26.7.0
+./build-src-rpm-from-git [-no-bison] [-o <dir>] [-repo <url>] [-ref <name>] <os> <tag>
+./build-rpms-from-git    [-no-bison] [-o <dir>] [-repo <url>] [-ref <name>] <os> <tag>
+e.g. ./build-src-rpm-from-git ol10 mysql-9.7.1
+e.g. ./build-rpms-from-git -repo https://github.com/<you>/mysql-server.git -ref bug/120895 ol9 26.7.0
 ```
 
 `-repo`/`-ref` override what actually gets cloned (a fork and/or a branch,
@@ -383,31 +429,50 @@ instead of the default upstream repo at a tag matching `<tag>`), while
 real `MYSQL_VERSION` at whatever commit gets checked out, since it's used
 to predict the CPack-produced tarball filename. This is what makes it
 possible to build and test a patched tree (see
-[Fixing the actual bug and filing a report](README.md#fixing-the-actual-bug-and-filing-a-report)
-in the README) before it's an official release with a real src.rpm to
-point at.
+[Reporting an upstream bug](README.md#reporting-an-upstream-bug) in the
+README) before it's an official release with a real src.rpm to point at.
 
-Like `build-one`, it's a thin wrapper around the same `mysql-rpm-builder`
-binary's own subcommands:
+Both are thin wrappers around the same `mysql-rpm-builder` binary's own
+subcommands. Host subcommands are named `git-build-<X>`; in-container
+orchestrators are `git-<X>-build`:
 
 | Command | Where | Purpose |
 |---|---|---|
-| `git-build-one [-o <dir>] [-no-bison] [-repo <url>] [-ref <name>] [-n] <os> <tag>` | host | launch a Docker container and build `<tag>` on `<os>` |
-| `git-run [-o <dir>] [-no-bison] [-repo <url>] [-ref <name>] <tag>` | container (root) | OS-prep (via `git-build-deps.yaml`'s bootstrap package list), then drives the steps below |
-| `git-clone` / `git-configure` / `git-assemble-srpm [-o <dir>] [-no-bison] [-repo <url>] [-ref <name>] <tag>` | container (rpmbuild) | individually re-runnable build-user steps, same debuggability as the src.rpm path's steps |
+| `git-build-src-rpm [-o <dir>] [-no-bison] [-repo <url>] [-ref <name>] [-n] <os> <tag>` | host | launch a container, produce a src.rpm only |
+| `git-src-rpm-build [-o <dir>] [-no-bison] [-repo <url>] [-ref <name>] <tag>` | container (root) | OS-prep, then `git-clone` → `git-apply-patches` → `git-configure` → `git-assemble-src-rpm` |
+| `git-build-rpms [-o <dir>] [-no-bison] [-repo <url>] [-ref <name>] [-n] <os> <tag>` | host | launch a container, produce the full binary RPM set |
+| `git-all-rpms-build [-o <dir>] [-no-bison] [-repo <url>] [-ref <name>] <tag>` | container (root) | OS-prep, then the full pipeline below |
+| `git-clone` / `git-apply-patches` / `git-configure` / `git-stage` [`-o <dir>` `-no-bison` `-repo <url>` `-ref <name>`] `<tag>` | container (rpmbuild) | individually re-runnable build-user steps, shared by both commands (`git-apply-patches` is a no-op if this (os, tag) has no `patches:` configured) |
+| `git-assemble-src-rpm <tag>` | container (rpmbuild) | `git-src-rpm-build` only: `rpmbuild -bs` after `git-stage` |
+| `git-builddeps <tag>` | container (root) | `git-all-rpms-build` only: `yum-builddep` against the rendered spec |
+| `git-rpmbuild <tag>` | container (rpmbuild) | `git-all-rpms-build` only: `rpmbuild -ba` + collect |
 
-It shallow-clones the ref, runs `cmake configure` (this is what actually
+Both shallow-clone the ref, apply any configured patches (`git-apply-patches`
+— see [Patching a git-based build](#patching-a-git-based-build); a no-op if
+none are configured), then run `cmake configure` (this is what actually
 produces the real `packaging/rpm-oel/mysql.spec` — nothing here
-hand-substitutes that template), optionally skips the pre-generated bison
-output (`-no-bison`: `mysql.spec` requires bison unconditionally, so a real
-`rpmbuild -ba` regenerates `sql_yacc.cc`/etc. itself regardless of what the
-tarball ships — see `docs/srpm-tarball-differs-from-git-tag.md`), packages
-the source tarball via CPack, and runs `rpmbuild -bs`. The resulting
-src.rpm lands in `built-from-git/<os><major>__<tag>/`.
+hand-substitutes that template), optionally skipping the pre-generated
+bison output (`-no-bison`: `mysql.spec` requires bison unconditionally, so
+a real `rpmbuild -ba` regenerates `sql_yacc.cc`/etc. itself regardless of
+what the tarball ships — see `docs/srpm-tarball-differs-from-git-tag.md`),
+then package the source tarball via CPack and stage it with the rendered
+spec into `~/rpmbuild/{SPECS,SOURCES}` (`git-stage`, shared by both). From
+there:
 
-Two gaps between a plain git checkout and what `cmake configure`/`rpmbuild
--bs` actually need are handled automatically, both without requiring any
-network access from inside the container beyond a native Go download:
+- `git-build-src-rpm` runs `rpmbuild -bs` and stops — output lands in
+  `built/git-build-src-rpm/<os><major>__<tag>/`.
+- `git-build-rpms` instead resolves the *real* `BuildRequires:` from the
+  now-rendered spec (`git-builddeps`, root — needs root to install
+  packages but reads the spec the build user just staged, same reason
+  `build-one`'s `install-builddeps` runs where it does) and runs
+  `rpmbuild -ba` (`git-rpmbuild`) — producing both binary RPMs and a
+  src.rpm in one pass. No src.rpm round trip: that src.rpm is a normal
+  byproduct in `SRPMS/`, never reinstalled. Output lands in
+  `built/git-build-rpms/<os><major>__<tag>/`.
+
+Two gaps between a plain git checkout and what `cmake configure` actually
+needs are handled automatically, both without requiring any network access
+from inside the container beyond a native Go download:
 
 - **Boost.** MySQL 9.x and 8.4.x both bundle a matching `boost_<ver>`
   directory right in the source tree (`extra/boost/`, confirmed for
@@ -431,32 +496,130 @@ network access from inside the container beyond a native Go download:
   actually declares them and only if not already present — never
   overwriting a real file.
 
-**Current scope: src.rpm only** — it doesn't (yet) run `rpmbuild -ba` to
-produce binary RPMs directly; you build the resulting src.rpm the normal
-way afterward (see below). `git-build-deps.yaml` (the bootstrap package
-list needed just to get `cmake configure` running at all, before any real
-spec exists to run `yum-builddep` against) has `ol8`, `ol9` and `ol10`
-entries. The compiler toolset (`gcc-toolset-<N>`, when the base OS's own
-compiler is too old) is a per-`(os, tag)` override in that same file,
-determined empirically per tag rather than assumed — see the file's own
-header comment for the discovery method.
+### `git-build-config.yaml`
 
-To confirm a git-built src.rpm is actually usable by the normal
-`rpmbuild -ba` pipeline, point a `config.yaml`-shaped `-c` file's `srpm:` at
-it with a `file://` URL instead of a download one (see
-[Configuration](#configuration)):
+Separate from `rpm-build-config.yaml` — not read by `build-one`, and shaped
+differently (nested `oses.<os>.<tier>`, no srpm/label per entry, since
+there's no srpm URL for a git-tag build to have). Four tiers, only the
+first outside this file:
+
+1. Base container image and repos — `images.yaml`, shared with `build-one`.
+2. **`oses.<os>.minimal_git_packages`** — universal tooling for *any*
+   MySQL git tag's `cmake configure` to run on this OS (same for every tag).
+3. **`oses.<os>.builds.<tag>.src_rpm_build_packages`** — *this tag's*
+   `cmake configure` needs, on top of tier 2. Read by both
+   `git-build-src-rpm` and `git-build-rpms` (both run `cmake configure`).
+4. **`oses.<os>.builds.<tag>.all_rpms_extra_packages`** — patches a gap in
+   *this tag's spec's own declared* `BuildRequires:`. Read only by
+   `git-builddeps` (`git-build-rpms`) — `git-build-src-rpm` never needs
+   this, since `rpmbuild -bs` only assembles a source tarball + spec and
+   never evaluates `BuildRequires:` at all.
+
+```yaml
+oses:
+  ol10:
+    minimal_git_packages: [bison, cmake, gcc, gcc-c++, git, krb5-devel,
+      libaio-devel, make, rpm-build, yum-utils, ...]
+    builds:
+      mysql-9.7.1:
+        src_rpm_build_packages: [gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++]
+        all_rpms_extra_packages: []   # only if yum-builddep against the real spec still misses something
+```
+
+Tiers 2/3 are determined empirically per (os, tag), same discipline as the
+compiler-toolset entries: an empty-list run's `cmake configure` error names
+exactly what's missing (e.g. `Could not find devtoolset compiler/linker in
+/opt/rh/gcc-toolset-<N>`), not guessed in advance. Tier 4 the same way, via
+whatever `yum-builddep`/the compile reports missing.
+
+**Current limitation**: tier 2 lists (ol8/ol9/ol10) were carried forward
+from this file's earlier, single flat `packages:` list and have not been
+individually re-verified against tier 3 — some entries there may only be
+needed by specific tags and belong in tier 3 instead. Minimize tier 2 per
+package empirically before trusting it as the true OS-universal minimum.
+
+### Patching a git-based build
+
+Optional, and unrelated to the four dependency tiers above. `git-clone`
+shallow-clones the tag; `git-apply-patches` (shared by both
+`git-build-src-rpm` and `git-build-rpms`) then applies any patches
+configured for this (os, tag) via `git-build-config.yaml`'s `patches:`
+list, before `cmake configure` runs:
+
+```yaml
+oses:
+  ol10:
+    builds:
+      mysql-9.7.1:
+        patches: [000.fix.patch]
+```
+
+Each entry must be a bare filename — no path component — and the file
+itself lives in `config/git-patches/<tag>/`, applied via `git apply` in
+list order:
+
+```
+config/git-patches/mysql-9.7.1/000.fix.patch
+```
+
+No patches configured is the normal case and a clean no-op.
+
+**How this differs from `build-one`'s `SPECS`/`SOURCES` patching** (see
+[Patching](#patching) above) — genuinely different, not just a naming
+variation, because each targets whatever actually exists at that point in
+its own pipeline:
+
+| | `build-one` | git-based (`git-apply-patches`) |
+|---|---|---|
+| Target file | the already cmake-rendered `mysql.spec` in `~/rpmbuild/SPECS/` — the raw `mysql.spec.in` template doesn't exist in a src.rpm at all | the raw `packaging/rpm-oel/mysql.spec.in` (or any file) in the freshly cloned tree, before any substitution |
+| Tool | `patch -p0` | `git apply` |
+| Diff format | bare paths, e.g. `--- mysql.spec` | standard `git diff` output, `a/`/`b/`-prefixed paths, e.g. `--- a/packaging/rpm-oel/mysql.spec.in` |
+| Config location | `config/<label>/SPECS/`, `config/<label>/SOURCES/` | `config/git-patches/<tag>/` |
+
+A patch written for one will not apply against the other, even for a
+logically-similar change — the base text is genuinely different content,
+not just a differently-formatted diff of the same file. If you're patching
+the spec for both a `build-one` build and a git-based one, expect to
+maintain two separate patch files.
+
+**Known follow-up, not implemented**: neither mechanism auto-detects `-p0`
+vs `-p1` (`patch`) or `-p1` vs `-p0` (`git apply`) today — each is
+hardcoded to one strip level, so a patch generated in the "wrong" format
+for its target fails outright rather than being auto-corrected. Dry-running
+both levels and using whichever applies cleanly (falling back to a clear,
+actionable error naming both expected formats if neither does) is planned
+but not yet built, for either mechanism — see `applyPatch` in
+`go/steps/helpers.go` and `ApplyPatches` in `go/gitsteps/gitsteps.go`.
+
+### Confirming a git-built src.rpm is genuinely reproducible
+
+`git-build-rpms` succeeding proves the build works *given that exact git
+checkout and staging* — it doesn't prove the resulting `.src.rpm`, unpacked
+somewhere else with none of that ambient context, is actually
+self-sufficient. `git-stage` copies the CPack tarball and rendered spec
+into `~/rpmbuild` inside the *same* container/checkout that just ran
+`cmake configure`; if `package_source` or the compat-source-fetching logic
+ever leaned on something present in that specific build tree but not
+captured in the distributable src.rpm, a full `git-build-rpms` run would
+never catch it (this is exactly the class of bug official Oracle src.rpms
+have shipped with before).
+
+To confirm the src.rpm is genuinely standalone, point a
+`rpm-build-config.yaml`-shaped `-c` file's `srpm:` at it with a `file://`
+URL and run it through `build-one` — a real `rpm -ivh` into a *fresh*
+`~/rpmbuild`, no residual git-checkout state:
 
 ```yaml
 oses:
   ol10:
     builds:
       9.7.1-from-git:
-        srpm: file:///data/built-from-git/ol10__mysql-9.7.1/mysql-community-9.7.1-1.el10.src.rpm
+        srpm: file:///data/built/git-build-src-rpm/ol10__mysql-9.7.1/mysql-community-9.7.1-1.el10.src.rpm
         auto_install_dependencies: true
 ```
 
 `-test`/`-add-if-successful` work exactly as they do for an official
 src.rpm — including that a comment on the merged entry survives the merge
-into `config.yaml` rather than being silently discarded (see
-`go/config/merge.go`), which matters here specifically because a build
-entry's comment is often the only record of *why* a workaround exists.
+into `rpm-build-config.yaml` (see `go/config/merge.go`) rather than being
+silently discarded, since a build entry's comment is often the only record
+of *why* a workaround exists.

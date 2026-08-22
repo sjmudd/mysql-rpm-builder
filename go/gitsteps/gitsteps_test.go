@@ -143,10 +143,12 @@ func TestOSAndRPMDefines(t *testing.T) {
 
 func TestOutputSubdir(t *testing.T) {
 	r := testRunner("mysql-9.7.1")
-	got := r.outputSubdir()
-	want := filepath.Join("/data", DefaultOutputDir, "ol10__mysql-9.7.1")
-	if got != want {
-		t.Errorf("outputSubdir() = %q, want %q", got, want)
+	for _, buildType := range []string{CmdBuildSrcRPM, CmdBuildRPMs} {
+		got := r.outputSubdir(buildType)
+		want := filepath.Join("/data", DefaultOutputDir, buildType, "ol10__mysql-9.7.1")
+		if got != want {
+			t.Errorf("outputSubdir(%q) = %q, want %q", buildType, got, want)
+		}
 	}
 }
 
@@ -358,7 +360,7 @@ func TestProvideLegacyFilterScriptsNeverOverwritesExisting(t *testing.T) {
 
 func TestLoadDepsPackages(t *testing.T) {
 	dir := t.TempDir()
-	content := "oses:\n  ol10:\n    packages:\n      - git\n      - cmake\n      - bison\n"
+	content := "oses:\n  ol10:\n    minimal_git_packages:\n      - git\n      - cmake\n      - bison\n"
 	if err := os.WriteFile(filepath.Join(dir, DepsFile), []byte(content), 0o644); err != nil {
 		t.Fatalf("writing fixture: %v", err)
 	}
@@ -382,15 +384,15 @@ func TestLoadDepsPackagesPerTagOverride(t *testing.T) {
 	dir := t.TempDir()
 	content := "oses:\n" +
 		"  ol9:\n" +
-		"    packages:\n" +
+		"    minimal_git_packages:\n" +
 		"      - git\n" +
 		"      - cmake\n" +
 		"    builds:\n" +
 		"      mysql-9.7.1:\n" +
-		"        packages:\n" +
+		"        src_rpm_build_packages:\n" +
 		"          - gcc-toolset-14-gcc\n" +
 		"      mysql-8.0.45:\n" +
-		"        packages: []\n"
+		"        src_rpm_build_packages: []\n"
 	if err := os.WriteFile(filepath.Join(dir, DepsFile), []byte(content), 0o644); err != nil {
 		t.Fatalf("writing fixture: %v", err)
 	}
@@ -433,7 +435,7 @@ func TestLoadDepsPackagesPerTagOverride(t *testing.T) {
 
 func TestLoadDepsPackagesMissingOS(t *testing.T) {
 	dir := t.TempDir()
-	content := "oses:\n  ol10:\n    packages:\n      - git\n"
+	content := "oses:\n  ol10:\n    minimal_git_packages:\n      - git\n"
 	if err := os.WriteFile(filepath.Join(dir, DepsFile), []byte(content), 0o644); err != nil {
 		t.Fatalf("writing fixture: %v", err)
 	}
@@ -447,12 +449,125 @@ func TestLoadDepsPackagesUnknownField(t *testing.T) {
 	// KnownFields(true), same as go/config -- a typo'd/unexpected key should
 	// fail loudly rather than be silently ignored.
 	dir := t.TempDir()
-	content := "oses:\n  ol10:\n    package: [git]\n" // typo: "package" not "packages"
+	content := "oses:\n  ol10:\n    minimal_git_package: [git]\n" // typo: missing trailing "s"
 	if err := os.WriteFile(filepath.Join(dir, DepsFile), []byte(content), 0o644); err != nil {
 		t.Fatalf("writing fixture: %v", err)
 	}
 
 	if _, err := loadDepsPackages(dir, "ol10", "mysql-9.7.1"); err == nil {
 		t.Error("loadDepsPackages with an unknown field = nil error, want one")
+	}
+}
+
+func TestLoadAllRPMsExtraPackages(t *testing.T) {
+	dir := t.TempDir()
+	content := "oses:\n" +
+		"  ol9:\n" +
+		"    minimal_git_packages:\n" +
+		"      - git\n" +
+		"    builds:\n" +
+		"      mysql-9.7.1:\n" +
+		"        all_rpms_extra_packages:\n" +
+		"          - libfido2-devel\n" +
+		"      mysql-8.4.10: {}\n"
+	if err := os.WriteFile(filepath.Join(dir, DepsFile), []byte(content), 0o644); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+
+	// A tag with an entry gets its configured extras.
+	got, err := loadAllRPMsExtraPackages(dir, "ol9", "mysql-9.7.1")
+	if err != nil {
+		t.Fatalf("loadAllRPMsExtraPackages: %v", err)
+	}
+	if want := []string{"libfido2-devel"}; len(got) != 1 || got[0] != want[0] {
+		t.Errorf("loadAllRPMsExtraPackages(mysql-9.7.1) = %v, want %v", got, want)
+	}
+
+	// A tag with a builds: entry but no all_rpms_extra_packages gets nil, no error.
+	got, err = loadAllRPMsExtraPackages(dir, "ol9", "mysql-8.4.10")
+	if err != nil {
+		t.Fatalf("loadAllRPMsExtraPackages: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("loadAllRPMsExtraPackages(mysql-8.4.10) = %v, want empty", got)
+	}
+
+	// A tag with no builds: entry at all also gets nil, no error -- most
+	// tags need nothing here.
+	got, err = loadAllRPMsExtraPackages(dir, "ol9", "mysql-8.0.46")
+	if err != nil {
+		t.Fatalf("loadAllRPMsExtraPackages: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("loadAllRPMsExtraPackages(mysql-8.0.46) = %v, want empty", got)
+	}
+}
+
+func TestLoadPatches(t *testing.T) {
+	dir := t.TempDir()
+	content := "oses:\n" +
+		"  ol9:\n" +
+		"    minimal_git_packages:\n" +
+		"      - git\n" +
+		"    builds:\n" +
+		"      mysql-9.7.1:\n" +
+		"        patches:\n" +
+		"          - 000.fix.patch\n" +
+		"          - 001.other.patch\n" +
+		"      mysql-8.4.10: {}\n"
+	if err := os.WriteFile(filepath.Join(dir, DepsFile), []byte(content), 0o644); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+
+	// A tag with patches gets them back in list order.
+	got, err := loadPatches(dir, "ol9", "mysql-9.7.1")
+	if err != nil {
+		t.Fatalf("loadPatches: %v", err)
+	}
+	want := []string{"000.fix.patch", "001.other.patch"}
+	if len(got) != len(want) {
+		t.Fatalf("loadPatches(mysql-9.7.1) = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("loadPatches(mysql-9.7.1)[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+
+	// A tag with a builds: entry but no patches gets nil, no error.
+	got, err = loadPatches(dir, "ol9", "mysql-8.4.10")
+	if err != nil {
+		t.Fatalf("loadPatches: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("loadPatches(mysql-8.4.10) = %v, want empty", got)
+	}
+
+	// A tag with no builds: entry at all also gets nil, no error.
+	got, err = loadPatches(dir, "ol9", "mysql-8.0.46")
+	if err != nil {
+		t.Fatalf("loadPatches: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("loadPatches(mysql-8.0.46) = %v, want empty", got)
+	}
+}
+
+func TestLoadPatchesRejectsPathComponent(t *testing.T) {
+	dir := t.TempDir()
+	content := "oses:\n" +
+		"  ol9:\n" +
+		"    minimal_git_packages:\n" +
+		"      - git\n" +
+		"    builds:\n" +
+		"      mysql-9.7.1:\n" +
+		"        patches:\n" +
+		"          - SOMEDIR/000.fix.patch\n"
+	if err := os.WriteFile(filepath.Join(dir, DepsFile), []byte(content), 0o644); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+
+	if _, err := loadPatches(dir, "ol9", "mysql-9.7.1"); err == nil {
+		t.Error("loadPatches with a path component in a patch filename = nil error, want one")
 	}
 }
