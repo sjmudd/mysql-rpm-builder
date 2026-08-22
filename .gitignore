@@ -9,3 +9,4 @@ generated_SRPMS/
 boost-cache/
 mysql-rpm-builder
 !cmd/mysql-rpm-builder
+.golangci-lint-latest

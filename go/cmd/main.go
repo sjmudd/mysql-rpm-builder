@@ -301,9 +301,10 @@ func runGitContainer(cmd string, args []string) {
 	// buildType groups this run's log under the same log/<type>/ directory
 	// its host-side launcher log uses (host subcommand name, not this
 	// in-container orchestrator name), matching built/<type>/'s partitioning.
-	if cmd == gitsteps.CmdSrcRPMBuild {
+	switch cmd {
+	case gitsteps.CmdSrcRPMBuild:
 		teeTo(filepath.Join(steps.DataDir, config.LogDir, gitsteps.CmdBuildSrcRPM, fmt.Sprintf("%s.%s__%s.log", cmd, r.OS.OSLabel(), tag)))
-	} else if cmd == gitsteps.CmdAllRPMsBuild {
+	case gitsteps.CmdAllRPMsBuild:
 		teeTo(filepath.Join(steps.DataDir, config.LogDir, gitsteps.CmdBuildRPMs, fmt.Sprintf("%s.%s__%s.log", cmd, r.OS.OSLabel(), tag)))
 	}
 

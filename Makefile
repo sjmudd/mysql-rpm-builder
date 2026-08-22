@@ -25,8 +25,33 @@ vet:
 
 ## lint: run golangci-lint (config in .golangci.yml)
 .PHONY: lint
-lint:
+lint: lint-tools
 	golangci-lint run ./...
+
+# Where golangci-lint currently lives (so an update lands in the same place),
+# falling back to the default `go install` location if it's not on PATH yet.
+LINT_BIN_DIR := $(shell dirname "$$(command -v golangci-lint 2>/dev/null)" 2>/dev/null || go env GOPATH)/bin
+LINT_VERSION_CACHE := .golangci-lint-latest
+
+## lint-tools: ensure golangci-lint is installed and reasonably current.
+## Checks the latest upstream release at most once per 24h (cached in
+## .golangci-lint-latest, gitignored) to avoid a GitHub API call on every run.
+.PHONY: lint-tools
+lint-tools:
+	@if [ ! -s $(LINT_VERSION_CACHE) ] || [ -z "$$(find $(LINT_VERSION_CACHE) -mmin -1440 2>/dev/null)" ]; then \
+		latest=$$(curl -sSfL https://api.github.com/repos/golangci/golangci-lint/releases/latest 2>/dev/null \
+			| sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p'); \
+		[ -n "$$latest" ] && echo "$$latest" > $(LINT_VERSION_CACHE) || true; \
+	fi; \
+	latest=$$(cat $(LINT_VERSION_CACHE) 2>/dev/null); \
+	installed=$$(golangci-lint --version 2>/dev/null | sed -n 's/.*version \([0-9.]*\).*/v\1/p'); \
+	if [ -z "$$installed" ]; then \
+		echo "golangci-lint not found, installing $${latest:-latest} into $(LINT_BIN_DIR)"; \
+		GOBIN=$(LINT_BIN_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$${latest:-latest}; \
+	elif [ -n "$$latest" ] && [ "$$installed" != "$$latest" ]; then \
+		echo "golangci-lint $$installed is behind latest $$latest, updating in $(LINT_BIN_DIR)"; \
+		GOBIN=$(LINT_BIN_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$$latest; \
+	fi
 
 ## build: compile the static binary
 .PHONY: build
