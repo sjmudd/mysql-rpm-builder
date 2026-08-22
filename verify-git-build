@@ -1,0 +1,37 @@
+#!/bin/sh
+#
+# Chains the three steps needed to genuinely confirm a git tag's mysql.spec
+# is self-sufficient -- BuildRequires: complete, not just buildable in our
+# own curated git-build-config.yaml environment (whose minimal_git_packages/
+# src_rpm_build_packages tiers, pre-installed before any BuildRequires: is
+# ever evaluated, can silently mask a real gap in the spec itself -- see
+# bug #120895): build a src.rpm from the git tag, generate a build-one
+# config entry pointing at it, then build all binary RPMs from that src.rpm
+# via build-one in a clean container that has none of those tiers applied,
+# confirming yum-builddep alone (no packages: override) resolves everything.
+#
+#     ./verify-git-build <os> <tag>
+#     e.g. ./verify-git-build ol10 mysql-26.7.0
+#
+# Each step is also independently re-runnable on its own -- see
+# build-src-rpm-from-git, generate-build-one-config, build-one -- so a
+# failure partway through doesn't require repeating the earlier (expensive)
+# steps, just fix and re-run from where it broke.
+#
+# Deliberately does not also run build-rpms-from-git: once this passes, that
+# becomes the fast standard way to build the tag going forward -- a separate,
+# routine action, not part of this one-time verification.
+#
+set -e
+
+os=$1
+tag=$2
+
+if [ -z "$os" ] || [ -z "$tag" ]; then
+	echo "usage: $0 <os> <tag>" >&2
+	exit 1
+fi
+
+./build-src-rpm-from-git "$os" "$tag"
+./generate-build-one-config "$os" "$tag"
+./build-one -c "${os}-${tag}-from-git.yaml" -add-if-successful "$os" "${tag}-from-git"

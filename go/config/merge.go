@@ -264,7 +264,7 @@ func insertBuild(content, osName, label string, build Build, sourceLines []strin
 		entryLines = sourceLines
 	} else {
 		var err error
-		entryLines, err = formatBuildEntry(label, build)
+		entryLines, err = FormatBuildEntry(label, build)
 		if err != nil {
 			return "", err
 		}
@@ -368,12 +368,14 @@ func indentOf(line string) (indent int, blank bool) {
 	return len(line) - len(trimmed), false
 }
 
-// formatBuildEntry renders a build entry as it should appear in config.yaml,
-// indented to entryIndent (the "label:" column). Packages/tweaks are
-// rendered in flow style ("[a, b, c]") to match the file's existing
-// convention; yaml.Node encoding (rather than yaml.Marshal on the Build
-// struct) is used so scalars still get the encoder's normal quoting rules.
-func formatBuildEntry(label string, b Build) ([]string, error) {
+// FormatBuildEntry renders a build entry as it should appear in
+// rpm-build-config.yaml, indented to entryIndent (the "label:" column).
+// Packages/tweaks are rendered in flow style ("[a, b, c]") to match the
+// file's existing convention; yaml.Node encoding (rather than yaml.Marshal
+// on the Build struct) is used so scalars still get the encoder's normal
+// quoting rules. Exported so generate-build-one-config (go/gitsteps) can
+// render a scratch config entry the same way MergeBuild would.
+func FormatBuildEntry(label string, b Build) ([]string, error) {
 	fields := &yaml.Node{Kind: yaml.MappingNode}
 	fields.Content = append(fields.Content,
 		&yaml.Node{Kind: yaml.ScalarNode, Value: "srpm"},
@@ -401,6 +403,11 @@ func formatBuildEntry(label string, b Build) ([]string, error) {
 		fields.Content = append(fields.Content,
 			&yaml.Node{Kind: yaml.ScalarNode, Value: "patches"},
 			stringFlowSeq(b.Patches))
+	}
+	if b.Annotations != nil {
+		fields.Content = append(fields.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "annotations"},
+			annotationsNode(*b.Annotations))
 	}
 
 	root := &yaml.Node{
@@ -436,4 +443,43 @@ func stringFlowSeq(items []string) *yaml.Node {
 		seq.Content = append(seq.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: it})
 	}
 	return seq
+}
+
+// annotationsNode renders an Annotations value as a nested mapping,
+// omitting each field that's empty -- mirrors the yaml struct tags'
+// omitempty behaviour, since this bypasses yaml.Marshal entirely.
+func annotationsNode(a Annotations) *yaml.Node {
+	m := &yaml.Node{Kind: yaml.MappingNode}
+	add := func(key, value string) {
+		if value == "" {
+			return
+		}
+		m.Content = append(m.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: key},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: value})
+	}
+	add("repo", a.Repo)
+	add("ref", a.Ref)
+	add("commit", a.Commit)
+	if len(a.GitPatches) > 0 {
+		m.Content = append(m.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "git_patches"},
+			stringFlowSeq(a.GitPatches))
+	}
+	if len(a.MinimalGitPackages) > 0 {
+		m.Content = append(m.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "minimal_git_packages"},
+			stringFlowSeq(a.MinimalGitPackages))
+	}
+	if len(a.SrcRPMBuildPackages) > 0 {
+		m.Content = append(m.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "src_rpm_build_packages"},
+			stringFlowSeq(a.SrcRPMBuildPackages))
+	}
+	if a.BisonGenerated {
+		m.Content = append(m.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "bison_generated"},
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"})
+	}
+	return m
 }

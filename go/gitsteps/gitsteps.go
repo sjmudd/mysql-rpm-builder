@@ -92,6 +92,11 @@ const (
 	CmdStage          = "git-stage"
 	CmdBuildDeps      = "git-builddeps"
 	CmdRPMBuild       = "git-rpmbuild"
+
+	// CmdGenerateConfig turns a git-build-src-rpm run's output into a
+	// build-one config entry -- see GenerateBuildOneConfig. Host-only, no
+	// container involved.
+	CmdGenerateConfig = "generate-build-one-config"
 )
 
 // DefaultRepo is cloned when -repo doesn't override it: Oracle's own public
@@ -607,7 +612,10 @@ func (r *Runner) AssembleSrcRPM() error {
 	if err := osprep.RunIn(filepath.Join(dir, rpmbuildSpecsDir), "rpmbuild", "--define", r.rpmDefine(), "-bs", "mysql.spec"); err != nil {
 		return err
 	}
-	return r.collect(dir)
+	if err := r.collect(dir); err != nil {
+		return err
+	}
+	return r.writeConfigSidecar(r.outputSubdir(CmdBuildSrcRPM))
 }
 
 // rpmbuildDir returns ~/rpmbuild for the current user -- shared by both the
@@ -889,6 +897,110 @@ func (r *Runner) collect(rpmbuildDir string) error {
 	// later.
 	args := append(append([]string{}, matches...), dest+string(filepath.Separator))
 	return osprep.Run("cp", args...)
+}
+
+const sidecarFile = ".config.yaml"
+
+// writeConfigSidecar writes dest/.config.yaml, recording this build's
+// configuration for generate-build-one-config to read later.
+func (r *Runner) writeConfigSidecar(dest string) error {
+	commit, err := r.commitSHA()
+	if err != nil {
+		return err
+	}
+	patches, err := loadPatches(r.DataDir, r.osLabel(), r.Tag)
+	if err != nil {
+		return err
+	}
+	df, err := loadDeps(r.DataDir, r.osLabel())
+	if err != nil {
+		return err
+	}
+	entry := df.OSes[r.osLabel()]
+	ann := config.Annotations{
+		Repo:                r.Repo,
+		Ref:                 r.Ref,
+		Commit:              commit,
+		GitPatches:          patches,
+		MinimalGitPackages:  entry.MinimalGitPackages,
+		SrcRPMBuildPackages: entry.Builds[r.Tag].SrcRPMBuildPackages,
+		BisonGenerated:      !r.SkipBison,
+	}
+	data, err := yaml.Marshal(ann)
+	if err != nil {
+		return fmt.Errorf("marshalling %s: %w", sidecarFile, err)
+	}
+	return os.WriteFile(filepath.Join(dest, sidecarFile), data, 0o644)
+}
+
+// commitSHA resolves fresh from the on-disk checkout rather than caching
+// from Clone: each git-* stage re-execs as its own process (see suBuild),
+// so nothing set during Clone's process would survive to here.
+func (r *Runner) commitSHA() (string, error) {
+	src, err := cloneDir(r.version())
+	if err != nil {
+		return "", err
+	}
+	out, err := exec.Command("git", "-C", src, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse HEAD in %s: %w", src, err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// GenerateBuildOneConfig globs the src.rpm a prior git-build-src-rpm run
+// produced for (osLabel, tag) under outputDir/git-build-src-rpm/<osLabel>__<tag>/,
+// reads its .config.yaml sidecar if present, and writes a scratch
+// <osLabel>-<tag>-from-git.yaml build-one can consume via -c. Runs
+// entirely on the host, no container: osLabel here is the target OS a
+// prior run was for, not this host's own OS, so this doesn't use
+// Runner/osrelease detection at all. Returns the written file's path.
+func GenerateBuildOneConfig(dataDir, outputDir, osLabel, tag string) (string, error) {
+	if outputDir == "" {
+		outputDir = DefaultOutputDir
+	}
+	srcDir := filepath.Join(dataDir, outputDir, CmdBuildSrcRPM, osLabel+"__"+tag)
+	matches, err := filepath.Glob(filepath.Join(srcDir, "*.src.rpm"))
+	if err != nil {
+		return "", err
+	}
+	if len(matches) != 1 {
+		return "", fmt.Errorf("expected exactly one src.rpm in %s, found %d", srcDir, len(matches))
+	}
+
+	var ann *config.Annotations
+	if data, err := os.ReadFile(filepath.Join(srcDir, sidecarFile)); err == nil {
+		var a config.Annotations
+		if err := yaml.Unmarshal(data, &a); err != nil {
+			return "", fmt.Errorf("parsing %s: %w", filepath.Join(srcDir, sidecarFile), err)
+		}
+		ann = &a
+	}
+
+	label := tag + "-from-git"
+	autoInstall := true
+	build := config.Build{
+		SRPM:                    "file:///data/" + filepath.Join(outputDir, CmdBuildSrcRPM, osLabel+"__"+tag, filepath.Base(matches[0])),
+		AutoInstallDependencies: &autoInstall,
+		Annotations:             ann,
+	}
+
+	entryLines, err := config.FormatBuildEntry(label, build)
+	if err != nil {
+		return "", err
+	}
+
+	var buf strings.Builder
+	buf.WriteString("oses:\n  " + osLabel + ":\n    builds:\n")
+	for _, l := range entryLines {
+		buf.WriteString(l + "\n")
+	}
+
+	outPath := fmt.Sprintf("%s-%s-from-git.yaml", osLabel, tag)
+	if err := os.WriteFile(outPath, []byte(buf.String()), 0o644); err != nil {
+		return "", err
+	}
+	return outPath, nil
 }
 
 // ---- full binary-rpm build (git-build-rpms) --------------------------

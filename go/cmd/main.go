@@ -72,6 +72,8 @@ func main() {
 	case gitsteps.CmdSrcRPMBuild, gitsteps.CmdAllRPMsBuild, gitsteps.CmdClone, gitsteps.CmdApplyPatches,
 		gitsteps.CmdConfigure, gitsteps.CmdAssembleSrcRPM, gitsteps.CmdStage, gitsteps.CmdBuildDeps, gitsteps.CmdRPMBuild:
 		runGitContainer(cmd, rest)
+	case gitsteps.CmdGenerateConfig:
+		runGenerateConfig(rest)
 	case "version", "-v", "--version":
 		fmt.Printf("mysql-rpm-builder %s\n", version.Version)
 	case "-h", "--help", "help":
@@ -266,6 +268,41 @@ func runGitBuildSrcRPM(args []string) {
 
 func runGitBuildRPMs(args []string) {
 	runGitHostBuild(gitsteps.CmdBuildRPMs, gitsteps.CmdAllRPMsBuild, "full binary RPM set", args)
+}
+
+// runGenerateConfig handles the host-only `generate-build-one-config [-o <dir>] <os> <tag>`
+// command: see gitsteps.GenerateBuildOneConfig.
+func runGenerateConfig(args []string) {
+	fs := flag.NewFlagSet(gitsteps.CmdGenerateConfig, flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, `usage: mysql-rpm-builder %s [-o <dir>] <os> <tag>
+
+  Globs the src.rpm a prior git-build-src-rpm run produced for <os>/<tag>,
+  reads its .config.yaml sidecar if present, and writes a scratch
+  <os>-<tag>-from-git.yaml build-one can consume via -c.
+
+  -o <dir>  output directory git-build-src-rpm used (default %q)
+`, gitsteps.CmdGenerateConfig, gitsteps.DefaultOutputDir)
+	}
+	outputDir := fs.String("o", gitsteps.DefaultOutputDir, "output directory")
+	_ = fs.Parse(args)
+
+	pos := fs.Args()
+	if len(pos) < 2 {
+		fs.Usage()
+		os.Exit(1)
+	}
+	osName, tag := pos[0], pos[1]
+
+	dir, err := os.Getwd()
+	if err != nil {
+		logx.Fatalf(1, "cannot determine working directory: %v", err)
+	}
+	outPath, err := gitsteps.GenerateBuildOneConfig(dir, *outputDir, osName, tag)
+	if err != nil {
+		logx.Fatalf(1, "%v", err)
+	}
+	fmt.Println(outPath)
 }
 
 // runGitContainer handles the in-container git-* commands: the root

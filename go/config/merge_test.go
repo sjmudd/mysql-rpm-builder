@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func boolPtr(b bool) *bool { return &b }
@@ -392,5 +394,73 @@ func TestBuildCount(t *testing.T) {
 	}
 	if got, want := alt.BuildCount(), 1; got != want {
 		t.Errorf("BuildCount() (alt-config) = %d, want %d", got, want)
+	}
+}
+
+func TestFormatBuildEntryWithAnnotations(t *testing.T) {
+	b := Build{
+		SRPM:                    "file:///data/built/git-build-src-rpm/ol10__mysql-9.7.1/mysql-community-9.7.1-1.el10.src.rpm",
+		AutoInstallDependencies: boolPtr(true),
+		Annotations: &Annotations{
+			Repo:                "https://github.com/mysql/mysql-server.git",
+			Ref:                 "mysql-9.7.1",
+			Commit:              "abc123",
+			GitPatches:          []string{"000.fix.patch"},
+			MinimalGitPackages:  []string{"bison", "cmake"},
+			SrcRPMBuildPackages: []string{"gcc-toolset-14-gcc"},
+			BisonGenerated:      true,
+		},
+	}
+	lines, err := FormatBuildEntry("9.7.1-from-git", b)
+	if err != nil {
+		t.Fatalf("FormatBuildEntry: %v", err)
+	}
+	got := strings.Join(lines, "\n")
+	for _, want := range []string{
+		"annotations:",
+		"repo: https://github.com/mysql/mysql-server.git",
+		"ref: mysql-9.7.1",
+		"commit: abc123",
+		"git_patches: [000.fix.patch]",
+		"minimal_git_packages: [bison, cmake]",
+		"src_rpm_build_packages: [gcc-toolset-14-gcc]",
+		"bison_generated: true",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("FormatBuildEntry output missing %q, got:\n%s", want, got)
+		}
+	}
+
+	// Confirm it also decodes back to the same Build, not just that the
+	// substrings are present -- the same shape configFile.OSes[..].Builds
+	// decodes into, dedented from entryIndent.
+	dedented := make([]string, len(lines))
+	for i, l := range lines {
+		dedented[i] = strings.TrimPrefix(l, strings.Repeat(" ", entryIndent))
+	}
+	var decoded map[string]Build
+	if err := yaml.Unmarshal([]byte(strings.Join(dedented, "\n")), &decoded); err != nil {
+		t.Fatalf("round-trip unmarshal: %v", err)
+	}
+	got2, ok := decoded["9.7.1-from-git"]
+	if !ok {
+		t.Fatalf("round-trip: label not found, got %v", decoded)
+	}
+	if !reflect.DeepEqual(got2, b) {
+		t.Errorf("round-trip: got %+v, want %+v", got2, b)
+	}
+}
+
+func TestFormatBuildEntryNoAnnotations(t *testing.T) {
+	b := Build{
+		SRPM:                    "https://dev.mysql.com/get/Downloads/x.src.rpm",
+		AutoInstallDependencies: boolPtr(true),
+	}
+	lines, err := FormatBuildEntry("9.7.1", b)
+	if err != nil {
+		t.Fatalf("FormatBuildEntry: %v", err)
+	}
+	if got := strings.Join(lines, "\n"); strings.Contains(got, "annotations") {
+		t.Errorf("FormatBuildEntry output has annotations with none set, got:\n%s", got)
 	}
 }

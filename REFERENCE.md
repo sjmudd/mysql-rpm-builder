@@ -496,6 +496,48 @@ from inside the container beyond a native Go download:
   actually declares them and only if not already present — never
   overwriting a real file.
 
+### Verifying a git-produced src.rpm's `BuildRequires:` are sufficient
+
+`git-build-rpms` succeeding on its own isn't a complete check: `git-builddeps`
+runs `yum-builddep` against a container already seeded with
+`minimal_git_packages`/`src_rpm_build_packages` (see `git-build-config.yaml`
+below), so a real gap in the spec's own declared `BuildRequires:` can be
+masked by packages that were only there to get `cmake configure` running in
+the first place. The only genuine proof is `build-one` against the
+git-produced src.rpm in a container with none of those tiers applied: just
+`auto_install_dependencies: true`.
+
+```
+./build-src-rpm-from-git <os> <tag>
+./generate-build-one-config <os> <tag>
+./build-one -c <os>-<tag>-from-git.yaml -add-if-successful <os> <tag>-from-git
+```
+
+Or, chained as one command:
+
+```
+./verify-git-build <os> <tag>
+```
+
+`generate-build-one-config` globs the src.rpm `build-src-rpm-from-git`
+produced under `built/git-build-src-rpm/<os><major>__<tag>/`, reads the
+`.config.yaml` sidecar `build-src-rpm-from-git` writes there (`repo`, `ref`,
+`commit`, `git_patches`, `minimal_git_packages`, `src_rpm_build_packages`,
+`bison_generated`), and writes `<os>-<tag>-from-git.yaml`: a single
+`rpm-build-config.yaml`-shaped entry with `srpm: file:///data/...`,
+`auto_install_dependencies: true`, and an `annotations:` block carrying the
+sidecar's contents. `annotations:` is informational only, never read by
+`config.Resolve`: it exists so a `build-one`-merged entry sourced from a
+git tag carries its own origin instead of relying on a label suffix or a
+hand-written comment.
+
+Each step stays independently re-runnable: a failure in `build-one` doesn't
+require repeating the (expensive) src.rpm build, just fix and rerun that
+last command against the already-generated `<os>-<tag>-from-git.yaml`.
+`verify-git-build` deliberately never runs `build-rpms-from-git`: once a
+tag's spec is proven clean this way, `build-rpms-from-git` becomes the fast,
+routine way to build it, not part of the one-time verification itself.
+
 ### `git-build-config.yaml`
 
 Separate from `rpm-build-config.yaml` — not read by `build-one`, and shaped

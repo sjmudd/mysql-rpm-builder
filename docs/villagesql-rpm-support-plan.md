@@ -2,7 +2,7 @@
 
 ## Status
 
-Branch `git-build-rpms`, uncommitted. Held at v2.7.0, target **v3.0.0**.
+Merged to `main` at v2.8.1. Target for the villagesql-server work itself: **v3.0.0**.
 
 **Done:**
 - Command rename + new full-build pipeline (`git-build-rpms`) — see Commands
@@ -14,15 +14,20 @@ Branch `git-build-rpms`, uncommitted. Held at v2.7.0, target **v3.0.0**.
 - `Clone()` no longer passes `--no-tags` — checkout keeps `refs/tags/<ref>`
   when ref is a tag, so `git describe --tags` shows what was cloned
 - First full `git-build-rpms` completion: ol10/mysql-26.7.0, exit 0, 20 RPMs
-  in `built/git-build-rpms/ol10__mysql-26.7.0/` — confirms we can build all
-  RPMs directly from git, not just a src.rpm. See "Git-build verification
-  workflow"
+  in `built/git-build-rpms/ol10__mysql-26.7.0/`: confirms we can build all
+  RPMs directly from git, not just a src.rpm.
+- **Step 0 fully closed**: `build-one -test` against that tag's
+  git-produced src.rpm also succeeded (clean container, zero extra
+  `packages:`), confirming the spec's `BuildRequires:` is genuinely
+  self-sufficient. Tooling to make this repeatable without manual YAML
+  editing built and unit-tested: `.config.yaml` sidecar, `go/config`
+  `Annotations`, `generate-build-one-config`. See "Git-build verification
+  workflow".
 
-**Pending** (see "Git-build verification workflow" for step 0's remaining
-leg):
-- `build-one` against the git-produced src.rpm, zero extra `packages:` —
-  and the tooling to make that repeatable without manual YAML editing
-- Version bump to v3.0.0, commit, merge
+**Pending:**
+- Run `verify-git-build` itself end to end as one command (its three
+  underlying steps were each run and proven individually for real, but the
+  wrapper script hasn't been invoked as a single chain yet)
 - villagesql-server spec.in patch and everything after (unstarted)
 
 **Open questions:**
@@ -121,32 +126,38 @@ attempts:
    debuginfo/debugsource/binary), ~3h50m. See
    `log/git-build-rpms/ol10__mysql-26.7.0__isigh.log`.
 
-Confirms the pipeline itself works. **Step 0 still needs a second leg.** `BuildDeps()`'s `yum-builddep` runs
+Confirms the pipeline itself works, but wasn't the whole story on its own: `BuildDeps()`'s `yum-builddep` runs
 against a container already seeded with `minimal_git_packages`/
-`src_rpm_build_packages` — a clean `git-build-rpms` pass can mask a real
-`BuildRequires:` gap (suspected cause of bug #120895 shipping across
+`src_rpm_build_packages`, so a clean `git-build-rpms` pass alone can mask a
+real `BuildRequires:` gap (suspected cause of bug #120895 shipping across
 multiple Oracle GA releases). Only `build-one` against the git-produced
 src.rpm (`auto_install_dependencies: true`, nothing else) is a genuine
-clean-room proof. Step 0 = both legs green.
+clean-room proof.
 
-**Tooling for leg 2, designed but not built:**
-- `.config.yaml` sidecar (written by `git-build-src-rpm`): `repo`, `ref`,
-  `commit` (needs `Clone()` to capture `git rev-parse HEAD`),
-  `git_patches`, `minimal_git_packages`, `src_rpm_build_packages`,
-  `bison_generated`.
-- `generate-build-one-config <os> <tag>`: globs the produced src.rpm, reads
-  the sidecar if present, writes `<os>-<tag>-from-git.yaml`.
-- `go/config.Build` needs an `Annotations` field (strict
-  `KnownFields(true)` decoding) — not urgent, nothing emits it yet.
-- Deferred: sibling `comment:` field for freeform notes.
-- `verify-git-build <os> <tag>` — thin wrapper chaining
-  `build-src-rpm-from-git` → `generate-build-one-config` → `build-one -c
-  ... -add-if-successful`. Not built/committed yet. Excludes
-  `build-rpms-from-git` deliberately — that's the routine
-  post-verification build path, not part of one-time verification.
+**Second leg, now done for real (ol10/mysql-26.7.0):**
+- `.config.yaml` sidecar, written by `git-build-src-rpm`: `repo`, `ref`,
+  `commit`, `git_patches`, `minimal_git_packages`,
+  `src_rpm_build_packages`, `bison_generated`. Confirmed real content
+  after an actual run (not a synthetic fixture).
+- `generate-build-one-config <os> <tag>`: globs the produced src.rpm,
+  reads the sidecar if present, writes `<os>-<tag>-from-git.yaml`. Ran
+  against the real sidecar above and produced a correct config.
+- `go/config.Build.Annotations` field, rendered by `FormatBuildEntry`.
+  Unit-tested (substring + full decode round-trip).
+- `build-one -c <generated>.yaml -test ol10 mysql-26.7.0-from-git`:
+  `exit status 0 (STOPPED)`, reached compilation cleanly in a genuinely
+  clean container. Confirms the spec's `BuildRequires:` alone is
+  sufficient for this tag.
+- `verify-git-build <os> <tag>`: thin wrapper chaining the three steps
+  above. Written, but not yet run as a single command; each step was run
+  individually instead. Deliberately excludes `build-rpms-from-git`,
+  that's the routine post-verification build path, not part of one-time
+  verification.
+- Deferred: sibling `comment:` field on `Build`, for freeform notes.
 
-Next: build `generate-build-one-config` + sidecar + `Annotations`, run
-`verify-git-build ol10 mysql-26.7.0`, then step 0 is done.
+Step 0 is done. Remaining: run `verify-git-build ol10 mysql-26.7.0` itself
+as a single command at least once, to confirm the wrapper's own plumbing
+(not just its three underlying steps) works.
 
 ## Patching
 

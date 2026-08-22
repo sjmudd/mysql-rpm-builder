@@ -98,6 +98,22 @@ type Build struct {
 	// apply-patches behaves exactly as before (applies whatever it finds
 	// under config/<label>/, or no-ops if that directory is absent).
 	Patches []string `yaml:"patches,omitempty"`
+	// Annotations records a git-produced src.rpm's configuration: informational
+	// only, never read by Resolve. Populated by generate-build-one-config
+	// from git-build-src-rpm's .config.yaml sidecar; see go/gitsteps.
+	Annotations *Annotations `yaml:"annotations,omitempty"`
+}
+
+// Annotations records a git-produced src.rpm's configuration: what was
+// cloned, what patches were applied, and what packages were used to build it.
+type Annotations struct {
+	Repo                string   `yaml:"repo,omitempty"`
+	Ref                 string   `yaml:"ref,omitempty"`
+	Commit              string   `yaml:"commit,omitempty"`
+	GitPatches          []string `yaml:"git_patches,omitempty"`
+	MinimalGitPackages  []string `yaml:"minimal_git_packages,omitempty"`
+	SrcRPMBuildPackages []string `yaml:"src_rpm_build_packages,omitempty"`
+	BisonGenerated      bool     `yaml:"bison_generated,omitempty"`
 }
 
 // ShouldInstallDependencies returns true if we explicitly set AutoInstallDependencies to true

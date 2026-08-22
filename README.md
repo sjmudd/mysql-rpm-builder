@@ -11,7 +11,7 @@ repeatable process to reproduce an official build or test a patched one.
 | I want to... | Use |
 |---|---|
 | Build official MySQL RPMs from a src.rpm | `build-one` |
-| Test a candidate fix before it's an official release | `build-src-rpm-from-git`, then feed the result to `build-one` |
+| Test a candidate fix before it's an official release | `verify-git-build`, which chains `build-src-rpm-from-git` → `build-one` for you |
 | Build a full custom RPM set straight from a git ref/fork | `build-rpms-from-git` |
 
 All three run in a `--rm` Docker container, as a non-root build user, from a
@@ -130,11 +130,14 @@ bugs.mysql.com/120895):
 1. Patch `mysql.spec.in` on a branch in your own fork.
 2. `./build-src-rpm-from-git -repo <fork url> -ref <branch> <os> <version>`
    (`<version>` must match the real `MYSQL_VERSION` at that commit).
-3. Point a `rpm-build-config.yaml` entry at the result
-   (`srpm: file:///data/built/git-build-src-rpm/...`) with just
-   `auto_install_dependencies: true` — no manual `packages:` — and run
-   `./build-one`. Passing with nothing added proves the spec fix is
-   complete, not just a working local hack.
+3. `./generate-build-one-config <os> <version>` writes a
+   `rpm-build-config.yaml`-shaped entry pointing at the result, with just
+   `auto_install_dependencies: true`, no manual `packages:`. Run `build-one
+   -c <that file>` against it: passing with nothing added proves the spec
+   fix is complete, not just a working local hack. See REFERENCE.md's
+   "Verifying a git-produced src.rpm's `BuildRequires:` are sufficient" for
+   why this two-step check (not just `build-rpms-from-git` succeeding) is
+   what actually proves it.
 4. Confirm the *un*patched build fails the same way, so the report shows
    both sides.
 5. File at [bugs.mysql.com](https://bugs.mysql.com/) with the reproduction

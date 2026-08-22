@@ -1,0 +1,27 @@
+#!/bin/sh
+#
+# Thin wrapper around the mysql-rpm-builder binary's generate-build-one-config
+# subcommand: turns a prior build-src-rpm-from-git run's output into a
+# build-one config entry, so the resulting src.rpm's BuildRequires: can be
+# verified with a clean-room build-one run instead of hand-editing YAML.
+#
+#     ./generate-build-one-config [-o dir] <os> <tag>
+#     e.g. ./generate-build-one-config ol10 mysql-9.7.1
+#
+# Writes <os>-<tag>-from-git.yaml, then run e.g.:
+#     ./build-one -c ol10-mysql-9.7.1-from-git.yaml -add-if-successful ol10 mysql-9.7.1-from-git
+#
+# See `mysql-rpm-builder generate-build-one-config -h`-equivalent usage in
+# go/cmd/main.go and go/gitsteps for the implementation. Build the binary
+# first with: go build -o mysql-rpm-builder ./go/cmd
+#
+dir=$(cd "$(dirname "$0")" && pwd)
+bin=$dir/mysql-rpm-builder
+
+if [ ! -x "$bin" ]; then
+	echo "ERROR: $bin not found or not executable; build it with:" >&2
+	echo "    (cd $dir && go build -o mysql-rpm-builder ./go/cmd)" >&2
+	exit 1
+fi
+
+exec "$bin" generate-build-one-config "$@"

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sjmudd/mysql-rpm-builder/go/osrelease"
@@ -569,5 +570,103 @@ func TestLoadPatchesRejectsPathComponent(t *testing.T) {
 
 	if _, err := loadPatches(dir, "ol9", "mysql-9.7.1"); err == nil {
 		t.Error("loadPatches with a path component in a patch filename = nil error, want one")
+	}
+}
+
+// generateConfigFixture creates dataDir/<DefaultOutputDir>/git-build-src-rpm/<osLabel>__<tag>/
+// with the given src.rpm filenames (each written empty) and, if sidecar is
+// non-empty, a .config.yaml sidecar with that content.
+func generateConfigFixture(t *testing.T, dataDir, osLabel, tag, sidecar string, srpmNames ...string) {
+	t.Helper()
+	srcDir := filepath.Join(dataDir, DefaultOutputDir, CmdBuildSrcRPM, osLabel+"__"+tag)
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	for _, name := range srpmNames {
+		if err := os.WriteFile(filepath.Join(srcDir, name), nil, 0o644); err != nil {
+			t.Fatalf("writing src.rpm fixture: %v", err)
+		}
+	}
+	if sidecar != "" {
+		if err := os.WriteFile(filepath.Join(srcDir, sidecarFile), []byte(sidecar), 0o644); err != nil {
+			t.Fatalf("writing sidecar fixture: %v", err)
+		}
+	}
+}
+
+func TestGenerateBuildOneConfigWithSidecar(t *testing.T) {
+	dataDir := t.TempDir()
+	sidecar := "repo: https://github.com/mysql/mysql-server.git\n" +
+		"ref: mysql-9.7.1\n" +
+		"commit: abc123\n" +
+		"minimal_git_packages: [bison, cmake]\n" +
+		"bison_generated: true\n"
+	generateConfigFixture(t, dataDir, "ol10", "mysql-9.7.1", sidecar, "mysql-community-9.7.1-1.el10.src.rpm")
+
+	t.Chdir(t.TempDir())
+	outPath, err := GenerateBuildOneConfig(dataDir, "", "ol10", "mysql-9.7.1")
+	if err != nil {
+		t.Fatalf("GenerateBuildOneConfig: %v", err)
+	}
+	if want := "ol10-mysql-9.7.1-from-git.yaml"; outPath != want {
+		t.Errorf("outPath = %q, want %q", outPath, want)
+	}
+
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("reading generated file: %v", err)
+	}
+	got := string(data)
+	for _, want := range []string{
+		"oses:\n  ol10:\n    builds:\n      mysql-9.7.1-from-git:",
+		"srpm: file:///data/" + DefaultOutputDir + "/" + CmdBuildSrcRPM + "/ol10__mysql-9.7.1/mysql-community-9.7.1-1.el10.src.rpm",
+		"auto_install_dependencies: true",
+		"annotations:",
+		"repo: https://github.com/mysql/mysql-server.git",
+		"commit: abc123",
+		"minimal_git_packages: [bison, cmake]",
+		"bison_generated: true",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("generated config missing %q, got:\n%s", want, got)
+		}
+	}
+}
+
+func TestGenerateBuildOneConfigNoSidecar(t *testing.T) {
+	dataDir := t.TempDir()
+	generateConfigFixture(t, dataDir, "ol10", "mysql-9.7.1", "", "mysql-community-9.7.1-1.el10.src.rpm")
+
+	t.Chdir(t.TempDir())
+	outPath, err := GenerateBuildOneConfig(dataDir, "", "ol10", "mysql-9.7.1")
+	if err != nil {
+		t.Fatalf("GenerateBuildOneConfig: %v", err)
+	}
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("reading generated file: %v", err)
+	}
+	if strings.Contains(string(data), "annotations:") {
+		t.Errorf("generated config has annotations: with no sidecar present, got:\n%s", data)
+	}
+}
+
+func TestGenerateBuildOneConfigNoSRPM(t *testing.T) {
+	dataDir := t.TempDir()
+	generateConfigFixture(t, dataDir, "ol10", "mysql-9.7.1", "")
+
+	t.Chdir(t.TempDir())
+	if _, err := GenerateBuildOneConfig(dataDir, "", "ol10", "mysql-9.7.1"); err == nil {
+		t.Error("GenerateBuildOneConfig with no src.rpm present = nil error, want one")
+	}
+}
+
+func TestGenerateBuildOneConfigMultipleSRPMs(t *testing.T) {
+	dataDir := t.TempDir()
+	generateConfigFixture(t, dataDir, "ol10", "mysql-9.7.1", "", "a.src.rpm", "b.src.rpm")
+
+	t.Chdir(t.TempDir())
+	if _, err := GenerateBuildOneConfig(dataDir, "", "ol10", "mysql-9.7.1"); err == nil {
+		t.Error("GenerateBuildOneConfig with two src.rpm files present = nil error, want one")
 	}
 }
