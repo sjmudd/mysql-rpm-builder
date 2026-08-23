@@ -454,8 +454,7 @@ produces the real `packaging/rpm-oel/mysql.spec` — nothing here
 hand-substitutes that template), optionally skipping the pre-generated
 bison output (`-no-bison`: `mysql.spec` requires bison unconditionally, so
 a real `rpmbuild -ba` regenerates `sql_yacc.cc`/etc. itself regardless of
-what the tarball ships — see `docs/srpm-tarball-differs-from-git-tag.md`),
-then package the source tarball via CPack and stage it with the rendered
+what the tarball ships), then package the source tarball via CPack and stage it with the rendered
 spec into `~/rpmbuild/{SPECS,SOURCES}` (`git-stage`, shared by both). From
 there:
 
@@ -489,8 +488,7 @@ from inside the container beyond a native Go download:
 - **`filter-provides.sh`/`filter-requires.sh`.** `mysql-8.0.x`'s spec (only
   — 8.4.x/9.x's spec.in doesn't declare these at all) references these two
   as bare-filename `Source:` entries, but they don't exist anywhere in the
-  public git tree — part of Oracle's private packaging pipeline, same theme
-  as `docs/srpm-tarball-differs-from-git-tag.md`. Verbatim copies (extracted
+  public git tree — part of Oracle's private packaging pipeline. Verbatim copies (extracted
   from Oracle's official src.rpm, sha256-verified) are checked into
   `go/gitsteps/assets/` and written into `SOURCES/` only when the spec
   actually declares them and only if not already present — never

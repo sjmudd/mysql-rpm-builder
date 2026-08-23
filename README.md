@@ -143,14 +143,10 @@ bugs.mysql.com/120895):
 5. File at [bugs.mysql.com](https://bugs.mysql.com/) with the reproduction
    and the spec diff.
 
-`docs/` has worked examples, including the full before/after trail for 120895.
-
 ## Reference, feedback, prior art
 
 - [`REFERENCE.md`](REFERENCE.md) — full command reference, config schema,
   individual debugging steps, git-tag build internals.
-- [`docs/`](docs/) — case studies (git-tag build gotchas, src.rpm vs. git
-  tarball differences, etc.).
 - Feedback welcome — `sjmudd` at `pobox.com`, or file an
   [issue](https://github.com/sjmudd/mysql-rpm-builder/issues/new).
 - Bugs found via this process:
