@@ -100,10 +100,16 @@ oses:
       # WIP experimental rpm build of villagesql fork.
       # Same source as ol10's entry below. gcc-toolset-12 confirmed by
       # an empty-list run's CMake error, same as mysql-8.4.7 above.
-      # This fails to build. The nested vsql_simple_extension
-      # ExternalProject_Add sub-build doesn't inherit the parent
-      # build's compiler choice, and falls back to el8's stock GCC
-      # 8.5, which has no working C++ compiler.
+      # This fails to build via rpmbuild. Potential villagesql bug:
+      # the nested vsql_simple_extension ExternalProject_Add sub-build
+      # doesn't pass CMAKE_C_COMPILER/CMAKE_CXX_COMPILER down to its
+      # own cmake invocation, so it re-detects a compiler instead of
+      # inheriting the parent's, and on el8 that lands on stock GCC
+      # 8.5 (no working C++ compiler) rather than gcc-toolset-12.
+      # Confirmed this is specific to how rpmbuild selects the
+      # compiler: a normal top-level build with CC/CXX exported before
+      # running cmake does not hit this, the nested build correctly
+      # picks up gcc-toolset-12 too in that case.
       8.4.10-villagesql-0.0.5:
         patches: [000.fix-illegal-dash-in-release.patch,
                   001.villagesql-naming-and-dead-code.patch,
