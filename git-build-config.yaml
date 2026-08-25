@@ -169,10 +169,7 @@ oses:
     builds:
       # WIP experimental rpm build of villagesql fork.
       # villagesql-server (github.com/villagesql/villagesql-server), tag
-      # 0.0.5, MySQL 8.4.10 base.
-      # Tagged 8.4.10-villagesql-0.0.5 (not bare 8.4.10) so this doesn't
-      # collide with a plain mysql-server 8.4.10 entry: different source
-      # tree, different patches. Full RPM build from generated src rpm
+      # 0.0.5, MySQL 8.4.10 base. Full RPM build from generated src rpm
       # succeeds, no extra packages needed beyond minimal_git_packages.
       8.4.10-villagesql-0.0.5:
         patches: [000.fix-illegal-dash-in-release.patch,
