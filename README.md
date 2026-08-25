@@ -127,17 +127,29 @@ If `BuildRequires:` is genuinely incomplete, the real fix belongs in
 `mysql-server`'s `packaging/rpm-oel/mysql.spec.in`. Workflow (based on
 bugs.mysql.com/120895):
 
+Steps 2-3 are what `verify-git-build` chains automatically (see the
+workflow table above) -- spelled out manually here only because
+`verify-git-build` itself doesn't take `-repo`/`-ref`, so it can't point
+at a fork branch. Once a fix has landed upstream on a real tag,
+`verify-git-build <os> <tag>` is the one-command version of the same
+check.
+
 1. Patch `mysql.spec.in` on a branch in your own fork.
 2. `./build-src-rpm-from-git -repo <fork url> -ref <branch> <os> <version>`
-   (`<version>` must match the real `MYSQL_VERSION` at that commit).
+   (`<version>` must match the real `MYSQL_VERSION` at that commit). Also
+   writes a `.config.yaml` sidecar next to the src.rpm, recording the
+   repo/ref/commit and package lists this build actually used.
 3. `./generate-build-one-config <os> <version>` writes a
-   `rpm-build-config.yaml`-shaped entry pointing at the result, with just
-   `auto_install_dependencies: true`, no manual `packages:`. Run `build-one
-   -c <that file>` against it: passing with nothing added proves the spec
-   fix is complete, not just a working local hack. See REFERENCE.md's
-   "Verifying a git-produced src.rpm's `BuildRequires:` are sufficient" for
-   why this two-step check (not just `build-rpms-from-git` succeeding) is
-   what actually proves it.
+   `rpm-build-config.yaml`-shaped entry pointing at the result, with
+   `auto_install_dependencies: true`, no manual `packages:`, plus an
+   `annotations:` block carrying that sidecar's contents. `annotations:`
+   is informational only, never read by `build-one` itself -- it exists
+   so the generated entry records its own git origin instead of a
+   hand-written comment. Run `build-one -c <that file>` against it:
+   passing with nothing added proves the spec fix is complete, not just a
+   working local hack. See REFERENCE.md's "Verifying a git-produced
+   src.rpm's `BuildRequires:` are sufficient" for why this two-step check
+   (not just `build-rpms-from-git` succeeding) is what actually proves it.
 4. Confirm the *un*patched build fails the same way, so the report shows
    both sides.
 5. File at [bugs.mysql.com](https://bugs.mysql.com/) with the reproduction
