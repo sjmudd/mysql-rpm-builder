@@ -377,6 +377,11 @@ func indentOf(line string) (indent int, blank bool) {
 // render a scratch config entry the same way MergeBuild would.
 func FormatBuildEntry(label string, b Build) ([]string, error) {
 	fields := &yaml.Node{Kind: yaml.MappingNode}
+	if b.Annotations != nil {
+		fields.Content = append(fields.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "annotations"},
+			annotationsNode(*b.Annotations))
+	}
 	fields.Content = append(fields.Content,
 		&yaml.Node{Kind: yaml.ScalarNode, Value: "srpm"},
 		&yaml.Node{Kind: yaml.ScalarNode, Value: b.SRPM})
@@ -403,11 +408,6 @@ func FormatBuildEntry(label string, b Build) ([]string, error) {
 		fields.Content = append(fields.Content,
 			&yaml.Node{Kind: yaml.ScalarNode, Value: "patches"},
 			stringFlowSeq(b.Patches))
-	}
-	if b.Annotations != nil {
-		fields.Content = append(fields.Content,
-			&yaml.Node{Kind: yaml.ScalarNode, Value: "annotations"},
-			annotationsNode(*b.Annotations))
 	}
 
 	root := &yaml.Node{
@@ -458,8 +458,12 @@ func annotationsNode(a Annotations) *yaml.Node {
 			&yaml.Node{Kind: yaml.ScalarNode, Value: key},
 			&yaml.Node{Kind: yaml.ScalarNode, Value: value})
 	}
-	add("repo", a.Repo)
-	add("ref", a.Ref)
+	// Keys emitted in alphabetical order.
+	if a.BisonGenerated {
+		m.Content = append(m.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "bison_generated"},
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"})
+	}
 	add("commit", a.Commit)
 	if len(a.GitPatches) > 0 {
 		m.Content = append(m.Content,
@@ -471,15 +475,12 @@ func annotationsNode(a Annotations) *yaml.Node {
 			&yaml.Node{Kind: yaml.ScalarNode, Value: "minimal_git_packages"},
 			stringFlowSeq(a.MinimalGitPackages))
 	}
+	add("ref", a.Ref)
+	add("repo", a.Repo)
 	if len(a.SrcRPMBuildPackages) > 0 {
 		m.Content = append(m.Content,
 			&yaml.Node{Kind: yaml.ScalarNode, Value: "src_rpm_build_packages"},
 			stringFlowSeq(a.SrcRPMBuildPackages))
-	}
-	if a.BisonGenerated {
-		m.Content = append(m.Content,
-			&yaml.Node{Kind: yaml.ScalarNode, Value: "bison_generated"},
-			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"})
 	}
 	return m
 }

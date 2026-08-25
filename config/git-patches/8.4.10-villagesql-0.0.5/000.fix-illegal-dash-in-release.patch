@@ -1,0 +1,31 @@
+--- a/packaging/rpm-oel/mysql.spec.in
++++ b/packaging/rpm-oel/mysql.spec.in
+@@ -148,8 +148,26 @@
+ Name:           mysql%{?cluster:-cluster}-%{product_suffix}
+ Summary:        A very fast and reliable SQL database server
+ Group:          Applications/Databases
+-Version:        @MYSQL_NO_DASH_VERSION@
+-Release:        1@MYSQL_VERSION_EXTRA_DOT@%{?commercial:.1}%{?dist}
++# @VSQL_ABBR_VERSION@/@MYSQL_VERSION_EXTRA_DOT@ come from
++# cmake/vsql_version.cmake's GET_VSQL_VERSION() (via VSQL_VERSION),
++# substituted here by the same CONFIGURE_FILE() call that fills in
++# @MYSQL_NO_DASH_VERSION@ etc. Both can contain '-' (e.g.
++# VSQL_ABBR_VERSION "0.0.5-dev", EXTRA_VERSION
++# "-villagesql-0.0.5-dev-<githash>"), which is illegal in RPM
++# Version:/Release: since rpmspec/rpmbuild refuse to parse the spec at
++# all otherwise. Version: combines the mysql+villagesql identity (a
++# different combination is a genuinely different source, not a
++# repackaging of the same one); Release: is for packaging differences
++# of that same source, so it keeps only what's left of
++# MYSQL_VERSION_EXTRA_DOT once the "villagesql-<VSQL_ABBR_VERSION>"
++# identity prefix is stripped back out (typically just a short git
++# commit hash): repeating the version, or the literal word
++# "villagesql", there would be noise, since both are already in
++# Version:, and the package itself is villagesql.
++%global vsql_version_us %(echo '@VSQL_ABBR_VERSION@' | tr '-' '_')
++%global vsql_build_id %(v='@MYSQL_VERSION_EXTRA_DOT@'; p='.villagesql-@VSQL_ABBR_VERSION@'; v=${v#$p}; v=${v#-}; v=$(echo "$v" | tr '-' '_'); [ -n "$v" ] && echo ".$v" || echo)
++Version:        @MYSQL_NO_DASH_VERSION@_%{vsql_version_us}
++Release:        1%{vsql_build_id}%{?commercial:.1}%{?dist}
+ License:        Copyright (c) 2000, @MYSQL_COPYRIGHT_YEAR@, %{mysql_vendor}. Under %{?license_type} license as shown in the Description field.
+ Source0:        https://cdn.mysql.com/Downloads/MySQL-@MYSQL_BASE_VERSION@/%{src_dir}.tar.gz
+ URL:            http://www.mysql.com/

@@ -180,6 +180,16 @@ oses:
         # sjmudd/mysql-server bug/120895 branch) -- expect PASS.
         srpm: file:///data/built-from-git/ol10__26.7.0/mysql-community-26.7.0-1.el10.src.rpm
         auto_install_dependencies: true
+      8.4.10-villagesql-0.0.5-from-git:
+        annotations:
+          bison_generated: true
+          commit: a2a825d0fe4598e1cea6e629207ce60bc6be052b
+          git_patches: [000.fix-illegal-dash-in-release.patch, 001.villagesql-naming-and-dead-code.patch, 002.fix-inet-ntop-buffer-size.patch, 003.add-missing-villagesql-files.patch]
+          minimal_git_packages: [bison, cmake, cyrus-sasl-devel, gcc, gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, make, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, pkgconfig(systemd), rpcgen, rpm-build, systemd, yum-utils]
+          ref: 0.0.5
+          repo: https://github.com/villagesql/villagesql-server.git
+        srpm: file:///data/built/git-build-src-rpm/ol10__8.4.10-villagesql-0.0.5/villagesql-8.4.10_0.0.5_dev-1.a2a825d0.el10.src.rpm
+        auto_install_dependencies: true
   #
   # Rocky Linux
   #

@@ -670,3 +670,50 @@ func TestGenerateBuildOneConfigMultipleSRPMs(t *testing.T) {
 		t.Error("GenerateBuildOneConfig with two src.rpm files present = nil error, want one")
 	}
 }
+
+func TestFindSourceTarballVanilla(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "mysql-8.4.10.tar.gz"), nil, 0o644); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+	got, err := findSourceTarball(dir, "8.4.10")
+	if err != nil {
+		t.Fatalf("findSourceTarball: %v", err)
+	}
+	if want := filepath.Join(dir, "mysql-8.4.10.tar.gz"); got != want {
+		t.Errorf("findSourceTarball() = %q, want %q", got, want)
+	}
+}
+
+func TestFindSourceTarballForkSuffix(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "mysql-8.4.10-villagesql-0.0.5-dev-a2a825d0.tar.gz"), nil, 0o644); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+	got, err := findSourceTarball(dir, "8.4.10")
+	if err != nil {
+		t.Fatalf("findSourceTarball: %v", err)
+	}
+	if want := filepath.Join(dir, "mysql-8.4.10-villagesql-0.0.5-dev-a2a825d0.tar.gz"); got != want {
+		t.Errorf("findSourceTarball() = %q, want %q", got, want)
+	}
+}
+
+func TestFindSourceTarballNoneFound(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := findSourceTarball(dir, "8.4.10"); err == nil {
+		t.Error("findSourceTarball with no matching tarball = nil error, want one")
+	}
+}
+
+func TestFindSourceTarballAmbiguous(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"mysql-8.4.10.tar.gz", "mysql-8.4.10-villagesql-0.0.5.tar.gz"} {
+		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o644); err != nil {
+			t.Fatalf("writing fixture: %v", err)
+		}
+	}
+	if _, err := findSourceTarball(dir, "8.4.10"); err == nil {
+		t.Error("findSourceTarball with two matching tarballs = nil error, want one")
+	}
+}

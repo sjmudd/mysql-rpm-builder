@@ -679,9 +679,9 @@ func (r *Runner) Stage() error {
 	if err := osprep.RunIn(build, "cmake", "--build", ".", "--target", "package_source"); err != nil {
 		return err
 	}
-	tarball := filepath.Join(build, "mysql-"+r.version()+".tar.gz")
-	if _, err := os.Stat(tarball); err != nil {
-		return fmt.Errorf("expected %s not found", tarball)
+	tarball, err := findSourceTarball(build, r.version())
+	if err != nil {
+		return err
 	}
 
 	spec := r.generatedSpec(build)
@@ -720,6 +720,25 @@ func (r *Runner) Stage() error {
 	return provideLegacyFilterScripts(specCopy, filepath.Join(dir, rpmbuildSourcesDir))
 }
 
+// findSourceTarball locates the CPack-produced source tarball for this
+// version: "mysql-<version>" plus whatever suffix this source tree's own
+// cmake/*_version.cmake appends (empty for vanilla mysql-server, but a
+// fork can add one: villagesql-server's cmake/vsql_version.cmake appends
+// "-villagesql-<vsql-version>[-<pre>][-<githash>]"). Globs rather than
+// assuming an exact name, so this works for any fork's suffix, not just
+// one hardcoded pattern.
+func findSourceTarball(build, version string) (string, error) {
+	pattern := filepath.Join(build, "mysql-"+version+"*.tar.gz")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return "", err
+	}
+	if len(matches) != 1 {
+		return "", fmt.Errorf("expected exactly one source tarball matching %s, found %d", pattern, len(matches))
+	}
+	return matches[0], nil
+}
+
 // fetchExternalSources downloads (with caching under cacheDir, the same
 // SRPMS/ directory the srpm-based path uses for its own downloads -- these
 // containers are --rm, so without this every run would re-fetch a
@@ -743,6 +762,9 @@ func (r *Runner) Stage() error {
 func fetchExternalSources(specPath, elDefine, sourcesDir, cacheDir string) error {
 	out, err := exec.Command("rpmspec", "--define", elDefine+" 1", "-P", specPath).Output()
 	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return fmt.Errorf("rpmspec -P %s: %w:\n%s", specPath, err, exitErr.Stderr)
+		}
 		return fmt.Errorf("rpmspec -P %s: %w", specPath, err)
 	}
 	re := regexp.MustCompile(`(?m)^Source[0-9]*:\s*(https?://\S+)\s*$`)
