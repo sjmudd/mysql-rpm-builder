@@ -150,8 +150,8 @@ oses:
           gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils,
           gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++]
       # WIP experimental rpm build of villagesql fork.
-      # Same source as ol10's entry below. gcc-toolset-12 confirmed by
-      # an empty-list run's CMake error, same as mysql-8.4.10 above.
+      # Same source as ol10's entry below. Full RPM build from
+      # generated src rpm succeeds.
       8.4.10-villagesql-0.0.5:
         patches: [000.fix-illegal-dash-in-release.patch,
                   001.villagesql-naming-and-dead-code.patch,
@@ -169,12 +169,11 @@ oses:
     builds:
       # WIP experimental rpm build of villagesql fork.
       # villagesql-server (github.com/villagesql/villagesql-server), tag
-      # 0.0.5, MySQL 8.4.10 base -- see private/villagesql-rpm-support-plan.md.
+      # 0.0.5, MySQL 8.4.10 base.
       # Tagged 8.4.10-villagesql-0.0.5 (not bare 8.4.10) so this doesn't
       # collide with a plain mysql-server 8.4.10 entry: different source
-      # tree, different patches. As-is smoke test needed zero extra
-      # packages against minimal_git_packages alone, so no
-      # src_rpm_build_packages here.
+      # tree, different patches. Full RPM build from generated src rpm
+      # succeeds, no extra packages needed beyond minimal_git_packages.
       8.4.10-villagesql-0.0.5:
         patches: [000.fix-illegal-dash-in-release.patch,
                   001.villagesql-naming-and-dead-code.patch,
