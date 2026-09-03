@@ -97,19 +97,13 @@ oses:
         src_rpm_build_packages: [gcc-toolset-14-annobin-annocheck,
           gcc-toolset-14-annobin-plugin-gcc, gcc-toolset-14-binutils,
           gcc-toolset-14-gcc, gcc-toolset-14-gcc-c++]
-      # WIP experimental rpm build of villagesql fork.
-      # Same source as ol10's entry below. gcc-toolset-12 confirmed by
-      # an empty-list run's CMake error, same as mysql-8.4.7 above.
-      # This fails to build via rpmbuild. Potential villagesql bug:
-      # the nested vsql_simple_extension ExternalProject_Add sub-build
-      # doesn't pass CMAKE_C_COMPILER/CMAKE_CXX_COMPILER down to its
-      # own cmake invocation, so it re-detects a compiler instead of
-      # inheriting the parent's, and on el8 that lands on stock GCC
-      # 8.5 (no working C++ compiler) rather than gcc-toolset-12.
-      # Confirmed this is specific to how rpmbuild selects the
-      # compiler: a normal top-level build with CC/CXX exported before
-      # running cmake does not hit this, the nested build correctly
-      # picks up gcc-toolset-12 too in that case.
+      # villagesql fork, tag 0.0.5, MySQL 8.4.10 base. gcc-toolset-12
+      # (same as mysql-8.4.7 above).
+      # Status: Fails. Villagesql bug, not a config gap (works on ol9/ol10
+      # below). Nested vsql_simple_extension ExternalProject_Add doesn't
+      # inherit CMAKE_C_COMPILER/CMAKE_CXX_COMPILER, falls back to stock
+      # GCC 8.5 instead of gcc-toolset-12. rpmbuild-specific: a top-level
+      # build with CC/CXX exported avoids it.
       8.4.10-villagesql-0.0.5:
         patches: [000.fix-illegal-dash-in-release.patch,
                   001.villagesql-naming-and-dead-code.patch,
@@ -155,9 +149,9 @@ oses:
         src_rpm_build_packages: [gcc-toolset-12-annobin-annocheck,
           gcc-toolset-12-annobin-plugin-gcc, gcc-toolset-12-binutils,
           gcc-toolset-12-gcc, gcc-toolset-12-gcc-c++]
-      # WIP experimental rpm build of villagesql fork.
-      # Same source as ol10's entry below. Full RPM build from
-      # generated src rpm succeeds.
+      # villagesql fork, tag 0.0.5, MySQL 8.4.10 base. Same source as
+      # ol10's entry below.
+      # Status: Success, 20 RPMs.
       8.4.10-villagesql-0.0.5:
         patches: [000.fix-illegal-dash-in-release.patch,
                   001.villagesql-naming-and-dead-code.patch,
@@ -173,14 +167,28 @@ oses:
       openldap-devel, openssl-devel, pkgconfig(systemd), rpcgen, rpm-build,
       systemd, yum-utils]
     builds:
-      # WIP experimental rpm build of villagesql fork.
       # villagesql-server (github.com/villagesql/villagesql-server), tag
-      # 0.0.5, MySQL 8.4.10 base. Full RPM build from generated src rpm
-      # succeeds, no extra packages needed beyond minimal_git_packages.
+      # 0.0.5, MySQL 8.4.10 base. No extra packages beyond
+      # minimal_git_packages.
+      # Status: Success, 18 RPMs. Two upstream bugs fixed/merged
+      # (villagesql-server#1040/#1041).
       8.4.10-villagesql-0.0.5:
         patches: [000.fix-illegal-dash-in-release.patch,
                   001.villagesql-naming-and-dead-code.patch,
                   002.fix-inet-ntop-buffer-size.patch,
+                  003.add-missing-villagesql-files.patch]
+
+      # villagesql fork, MySQL 9.7.2 base. Real tag:
+      # publish/mysql-9.7_0.0.6 (pass -ref publish/mysql-9.7_0.0.6 on the
+      # git-build-src-rpm/git-build-rpms command line). Patches 000/001/003
+      # reworked from 0.0.5. Patch 002 dropped: inet_ntop() fix already
+      # upstream in this tree.
+      # Status: Success (2026-08-31), 19 RPMs, merged as
+      # ol10/9.7.2-villagesql-0.0.6-from-git. Pending: ol9/ol8 build, MTR
+      # testing.
+      9.7.2-villagesql-0.0.6:
+        patches: [000.fix-illegal-dash-in-release.patch,
+                  001.villagesql-naming-and-dead-code.patch,
                   003.add-missing-villagesql-files.patch]
 
       # Real upstream tag (not the ol8/ol9 "26.7.0" entries above, which
@@ -195,3 +203,13 @@ oses:
       # src_rpm_build_packages needed here either.
       mysql-26.7.0:
         patches: [000.fix-missing-test-package-requires.patch]
+
+      # MySQL 8.0.x build on el10. No official Oracle configuration.
+      # Patch: cmake optflags fix for the debug build (see
+      # config/git-patches/mysql-8.0.46/000.fix-el10-debug-build-fortify-source.patch).
+      # Also needs packages: [libfido2-devel, libudev-devel] (bug #120895),
+      # applied in ol10-mysql-8.0.46-from-git.yaml.
+      # Status: Success (2026-09-01), 10 RPMs incl. src.rpm, merged as
+      # ol10/mysql-8.0.46-from-git.
+      mysql-8.0.46:
+        patches: [000.fix-el10-debug-build-fortify-source.patch]

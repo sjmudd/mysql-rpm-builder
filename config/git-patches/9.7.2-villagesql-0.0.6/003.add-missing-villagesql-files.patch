@@ -1,0 +1,26 @@
+--- a/packaging/rpm-oel/mysql.spec.in
++++ b/packaging/rpm-oel/mysql.spec.in
+@@ -1091,6 +1091,10 @@
+ %attr(755, root, root) %{_libdir}/mysql/plugin/debug/libpluginmecab.so
+ %endif # mecab
+ 
++# VillageSQL system schema and bundled example extensions (VEBs).
++%attr(644, root, root) %{_datadir}/mysql-*/villagesql_schema.sql
++%{_libdir}/mysql/veb
++
+ %files common
+ %defattr(-, root, root, -)
+ %doc %{?license_files_server}
+@@ -1169,6 +1173,12 @@
+ %attr(755, root, root) %{_bindir}/mysql_config-%{__isa_bits}
+ %endif
+ %{_includedir}/mysql
++# VillageSQL Extension SDK: villagesql_config (mysql_config's
++# counterpart for extension developers), the SDK headers, and the
++# CMake package config consumed by find_package(VillageSQLExtensionFramework).
++%attr(755, root, root) %{_bindir}/villagesql_config
++%{_includedir}/mysql-dev/villagesql
++%{_libdir}/mysql/cmake/VillageSQLExtensionFramework
+ %{_datadir}/aclocal/mysql.m4
+ %{_libdir}/mysql/libmysqlclient.a
+ %{_libdir}/mysql/libmysqlservices.a

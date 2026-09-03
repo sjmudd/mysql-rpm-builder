@@ -58,5 +58,5 @@ oses:
   ol10:
     image: oraclelinux:10
     repos:
-      enable: [ol10_codeready_builder, ol10_u1_developer_EPEL]
+      enable: [ol10_codeready_builder, ol10_u2_developer_EPEL]
       epel_packages: [oracle-epel-release-el10]

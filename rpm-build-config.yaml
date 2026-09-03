@@ -190,6 +190,29 @@ oses:
           repo: https://github.com/villagesql/villagesql-server.git
         srpm: file:///data/built/git-build-src-rpm/ol10__8.4.10-villagesql-0.0.5/villagesql-8.4.10_0.0.5_dev-1.a2a825d0.el10.src.rpm
         auto_install_dependencies: true
+      9.7.2-villagesql-0.0.6-from-git:
+        annotations:
+          bison_generated: true
+          commit: 21be6201e25425c2fe7cd43c94b1a7f2e0b1b6e4
+          git_patches: [000.fix-illegal-dash-in-release.patch, 001.villagesql-naming-and-dead-code.patch, 003.add-missing-villagesql-files.patch]
+          minimal_git_packages: [bison, cmake, cyrus-sasl-devel, gcc, gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, make, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, pkgconfig(systemd), rpcgen, rpm-build, systemd, yum-utils]
+          ref: publish/mysql-9.7_0.0.6
+          repo: https://github.com/villagesql/villagesql-server.git
+        srpm: file:///data/built/git-build-src-rpm/ol10__9.7.2-villagesql-0.0.6/villagesql-9.7.2_0.0.6_dev-1.21be6201.el10.src.rpm
+        auto_install_dependencies: true
+      mysql-8.0.46-from-git:
+        annotations:
+          bison_generated: true
+          commit: 0a7df2e4693d8f10901a26034ae6257699356e30
+          git_patches: [000.fix-el10-debug-build-fortify-source.patch]
+          minimal_git_packages: [bison, cmake, cyrus-sasl-devel, gcc, gcc-c++, git, krb5-devel, libaio-devel, libcurl-devel, libfido2-devel, libquadmath-devel, libtirpc-devel, libudev-devel, make, ncurses-devel, numactl-devel, openldap-devel, openssl-devel, pkgconfig(systemd), rpcgen, rpm-build, systemd, yum-utils]
+          ref: mysql-8.0.46
+          repo: https://github.com/mysql/mysql-server.git
+        srpm: file:///data/built/git-build-src-rpm/ol10__mysql-8.0.46/mysql-community-8.0.46-1.el10.src.rpm
+        auto_install_dependencies: true
+        # auto_install_dependencies: true is insufficient
+        # - see https://bugs.mysql.com/bug.php?id=120895
+        packages: [libfido2-devel, libudev-devel]
   #
   # Rocky Linux
   #
