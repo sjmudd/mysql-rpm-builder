@@ -41,8 +41,8 @@ func TestFixAnnobinNoToolsetDirsIsNoop(t *testing.T) {
 	}
 }
 
-func TestBaseBuildPackagesNonEmpty(t *testing.T) {
-	if len(BaseBuildPackages) == 0 {
-		t.Error("BaseBuildPackages is empty; every build needs at least rpm-build")
+func TestDefaultBasePackagesNonEmpty(t *testing.T) {
+	if len(DefaultBasePackages) == 0 {
+		t.Error("DefaultBasePackages is empty; every build needs at least rpm-build")
 	}
 }

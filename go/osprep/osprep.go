@@ -57,21 +57,32 @@ func RunShell(script string) error {
 	return nil
 }
 
-// BaseBuildPackages are required for every build regardless of (os, version),
-// so they are installed unconditionally in Refresh rather than listed in each
-// config entry. util-linux provides 'su'.
-var BaseBuildPackages = []string{"rpm-build", "util-linux"}
+// DefaultBasePackages is the fallback when images.yaml's base_packages is
+// empty/absent for an OS. util-linux provides 'su'.
+var DefaultBasePackages = []string{"rpm-build", "util-linux"}
 
-// Refresh updates system packages, ensures dnf config-manager is available, and
-// installs the base build tooling that every build needs (see BaseBuildPackages).
-// It runs right after the initial yum update, so these installs always succeed.
-func Refresh() error {
+// DefaultConfigManagerPackage is the fallback used when images.yaml's
+// config_manager_package is empty/absent for an OS.
+const DefaultConfigManagerPackage = "dnf-command(config-manager)"
+
+// DefaultBuilddepPackage is the fallback used when images.yaml's
+// builddep_package is empty/absent for an OS. Provides yum-builddep.
+const DefaultBuilddepPackage = "yum-utils"
+
+// Refresh updates system packages and installs the base build tooling every
+// build needs (images.yaml's base_packages, or DefaultBasePackages when
+// unset). It runs right after the initial yum update, so these installs
+// always succeed.
+func Refresh(basePackages []string) error {
+	if len(basePackages) == 0 {
+		basePackages = DefaultBasePackages
+	}
 	logx.Log("### refresh: ensuring system packages are up to date")
 	if err := Run("yum", "update", "-y"); err != nil {
 		return err
 	}
-	logx.Logf("### refresh: installing base build tooling %v", BaseBuildPackages)
-	return Run("yum", append([]string{"install", "-y"}, BaseBuildPackages...)...)
+	logx.Logf("### refresh: installing base build tooling %v", basePackages)
+	return Run("yum", append([]string{"install", "-y"}, basePackages...)...)
 }
 
 // SetupRepos installs the EPEL packages and enables the configured repos.
@@ -81,13 +92,16 @@ func Refresh() error {
 // release package is present. Repos in Enable that already exist in the base
 // image (e.g. codeready_builder) can be enabled either way.
 //
-// Installs dnf-command(config-manager) itself first, rather than relying on
+// Installs the config-manager package itself first, rather than relying on
 // Refresh to have done it: SetupRepos is the caller that actually needs
 // `yum config-manager`, and callers (e.g. go/gitsteps.Runner.Run) may want
 // repos ready before anything else runs at all, i.e. before Refresh.
-func SetupRepos(repos config.Repos) error {
+func SetupRepos(repos config.Repos, configManagerPackage string) error {
+	if configManagerPackage == "" {
+		configManagerPackage = DefaultConfigManagerPackage
+	}
 	logx.Logf("### setup-repos: epel=%v enable=%v", repos.EPELPackages, repos.Enable)
-	if err := Run("yum", "install", "-y", "dnf-command(config-manager)"); err != nil {
+	if err := Run("yum", "install", "-y", configManagerPackage); err != nil {
 		return err
 	}
 	for _, pkg := range repos.EPELPackages {

@@ -81,12 +81,12 @@ func runDateTime() string {
 // osLabel is the "<id><major>" key, e.g. "ol10".
 func (r *Runner) osLabel() string { return r.OS.OSLabel() }
 
-// elDefine is the rpm macro name, e.g. "el10".
-func (r *Runner) elDefine() string { return fmt.Sprintf("el%d", r.OS.Major) }
-
-// rpmDefine is the `--define` argument passed to rpmbuild (and yum-builddep so
-// it evaluates the same conditional BuildRequires), e.g. "el10 1".
-func (r *Runner) rpmDefine() string { return r.elDefine() + " 1" }
+// rpmDefine is the `--define` argument passed to rpmbuild, e.g. "el10 1",
+// or "" (no --define) when images.yaml's enable_rpmbuild_define_el is
+// false for this OS. See config.RPMDefine.
+func (r *Runner) rpmDefine() (string, error) {
+	return config.RPMDefine(r.OS.ID, r.OS.Major, r.Cfg.EnableRPMBuildDefineEL)
+}
 
 // srpmsDir / logDir / builtDir are the persisted data directories.
 //
@@ -101,11 +101,6 @@ func (r *Runner) builtDir() string { return filepath.Join(r.DataDir, config.Buil
 
 // ---- root stages -----------------------------------------------------------
 
-// BaseBuildPackages are required for every build regardless of (os, version),
-// so they are installed unconditionally in Refresh rather than listed in each
-// config entry. util-linux provides 'su'.
-var BaseBuildPackages = osprep.BaseBuildPackages
-
 // RecordInitialPackages captures the base container image's package list before
 // any packages are changed, writing a sorted listing to rpm-qa.init.<runLabel>.
 // It must run before Refresh (which does the first `yum update`), so the file
@@ -117,10 +112,10 @@ func (r *Runner) RecordInitialPackages() error {
 	return captureRPMQA(path)
 }
 
-// Refresh updates system packages, ensures dnf config-manager is available, and
-// installs the base build tooling that every build needs (see BaseBuildPackages).
-// It runs right after the initial yum update, so these installs always succeed.
-func (r *Runner) Refresh() error { return osprep.Refresh() }
+// Refresh updates system packages and installs the base build tooling that
+// every build needs (images.yaml's base_packages). It runs right after the
+// initial yum update, so these installs always succeed.
+func (r *Runner) Refresh() error { return osprep.Refresh(r.Cfg.BasePackages) }
 
 // SetupRepos installs the EPEL packages and enables the configured repos.
 //
@@ -128,7 +123,9 @@ func (r *Runner) Refresh() error { return osprep.Refresh() }
 // Oracle *_developer_EPEL repos) are only defined once the corresponding EPEL
 // release package is present. Repos in Enable that already exist in the base
 // image (e.g. codeready_builder) can be enabled either way.
-func (r *Runner) SetupRepos() error { return osprep.SetupRepos(r.Cfg.Repos) }
+func (r *Runner) SetupRepos() error {
+	return osprep.SetupRepos(r.Cfg.Repos, r.Cfg.ConfigManagerPackage)
+}
 
 // InstallPackages installs the explicitly listed build packages for this
 // (os, version) as root, before the build. With auto_install_dependencies this
@@ -159,8 +156,12 @@ func (r *Runner) InstallBuildDeps() error {
 		logx.Log("### install-builddeps: auto_install_dependencies not set, skipping")
 		return nil
 	}
-	logx.Log("### install-builddeps: resolving build dependencies with yum-builddep")
-	if err := osprep.Run("yum", "install", "-y", "yum-utils"); err != nil { // provides yum-builddep
+	builddepPackage := r.Cfg.BuilddepPackage
+	if builddepPackage == "" {
+		builddepPackage = osprep.DefaultBuilddepPackage
+	}
+	logx.Logf("### install-builddeps: resolving build dependencies with yum-builddep (via %s)", builddepPackage)
+	if err := osprep.Run("yum", "install", "-y", builddepPackage); err != nil {
 		return err
 	}
 	home, err := buildUserRpmbuildHome()
@@ -305,8 +306,16 @@ func (r *Runner) RPMBuild() error {
 		logx.Logf("- warning: could not capture rpm -qa: %v", err)
 	}
 
+	define, err := r.rpmDefine()
+	if err != nil {
+		return err
+	}
+	args := []string{"-ba", spec}
+	if define != "" {
+		args = append([]string{"--define", define}, args...)
+	}
 	logx.Logf("### rpmbuild: started at %s", time.Now().UTC().Format(time.RFC3339))
-	buildErr := osprep.RunIn(specs, "rpmbuild", "--define", r.rpmDefine(), "-ba", spec)
+	buildErr := osprep.RunIn(specs, "rpmbuild", args...)
 	logx.Logf("### rpmbuild: finished, error=%v", buildErr)
 	return buildErr
 }
