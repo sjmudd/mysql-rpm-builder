@@ -64,9 +64,13 @@ added the same way (see [Configuration](#configuration)).
 Configuration is declarative YAML, layered **OS → MySQL version**:
 
 - **`images.yaml`** — one entry per OS (flavour + major version): the
-  container image and the repository setup. Repo setup is stable per OS
-  major version so it lives here once, not per MySQL version. Shared by
-  every build path (`build-one`, `build-src-rpm-from-git`, `build-rpms-from-git`).
+  container image, repository setup, base packages, and the OS-varying
+  behavior every build path used to hardcode (which package manager
+  command installs the config-manager plugin, which package provides
+  `yum-builddep`, and whether rpmbuild needs `--define "el<major> 1"`).
+  Repo setup is stable per OS major version so it lives here once, not per
+  MySQL version. Shared by every build path (`build-one`,
+  `build-src-rpm-from-git`, `build-rpms-from-git`).
 
   ```yaml
   oses:
@@ -75,7 +79,22 @@ Configuration is declarative YAML, layered **OS → MySQL version**:
       repos:
         enable: [ol10_codeready_builder, ol10_u1_developer_EPEL]  # yum config-manager --set-enabled
         epel_packages: [oracle-epel-release-el10]                 # dnf install -y
+      base_packages: [rpm-build, util-linux]           # installed unconditionally, every build
+      config_manager_package: dnf-command(config-manager)   # installed before repos.enable/epel_packages
+      builddep_package: yum-utils                       # installed before build-dependency resolution
+      enable_rpmbuild_define_el: true                   # pass --define "el10 1" to rpmbuild/rpmspec
   ```
+
+  `base_packages`, `config_manager_package`, and `builddep_package` are
+  optional: each falls back to a Go-side default (`[rpm-build, util-linux]`,
+  `dnf-command(config-manager)`, `yum-utils` respectively) when omitted, so
+  only non-RHEL-family OSes typically need to override them.
+
+  `enable_rpmbuild_define_el` has no fallback: omitting it defaults to
+  `false` (Go's zero value), meaning no `--define` is passed. Setting it
+  `true` for an OS not in the known EL family (`almalinux`, `centos`, `ol`,
+  `rhel`, `rocky`) is a configuration error, not silently ignored: Fedora
+  (`%fedora`/`%fc<N>` auto-resolve via its own rpm macros) sets it `false`.
 
 - **`rpm-build-config.yaml`** — used only by `build-one`: the build matrix,
   a chronological sequence of builds per OS. Each `(os, version)` entry is

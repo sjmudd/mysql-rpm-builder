@@ -22,7 +22,8 @@ state.
 
 Three YAML files, layered:
 
-**`images.yaml`** — one entry per OS: container image, repos to enable.
+**`images.yaml`** — one entry per OS: container image, repos to enable, base
+packages, and whether rpmbuild gets `--define "el<N> 1"`.
 ```yaml
 oses:
   ol10:
@@ -30,6 +31,10 @@ oses:
     repos:
       enable: [ol10_codeready_builder, ol10_u1_developer_EPEL]
       epel_packages: [oracle-epel-release-el10]
+    base_packages: [rpm-build, util-linux]
+    config_manager_package: dnf-command(config-manager)
+    builddep_package: yum-utils
+    enable_rpmbuild_define_el: true   # false for non-EL OSes (e.g. Fedora)
 ```
 
 **`git-build-config.yaml`** — only for the two git-based commands; not used by
