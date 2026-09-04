@@ -61,6 +61,40 @@ type Repos struct {
 type OSDef struct {
 	Image string `yaml:"image"`
 	Repos Repos  `yaml:"repos"`
+	// BasePackages are installed unconditionally in refresh, before anything
+	// else, for every build on this OS (e.g. rpm-build, util-linux).
+	BasePackages []string `yaml:"base_packages"`
+	// ConfigManagerPackage is installed before repos.enable/epel_packages,
+	// providing `yum config-manager` (e.g. dnf-command(config-manager)).
+	ConfigManagerPackage string `yaml:"config_manager_package"`
+	// BuilddepPackage is installed before build-dependency resolution,
+	// providing `yum builddep`/`yum-builddep` (e.g. yum-utils).
+	BuilddepPackage string `yaml:"builddep_package"`
+	// EnableRPMBuildDefineEL passes --define "el<major> 1" to rpmbuild/rpmspec.
+	// Only valid for EL-family OSes; see RPMDefine.
+	EnableRPMBuildDefineEL bool `yaml:"enable_rpmbuild_define_el"`
+}
+
+// KnownELFamily lists OS IDs (osrelease.Info.ID) using the elN dist-macro
+// convention. Excludes "fedora" (%fedora/%fc<N> instead, auto-defined).
+var KnownELFamily = map[string]bool{
+	"almalinux": true,
+	"centos":    true,
+	"ol":        true,
+	"rhel":      true,
+	"rocky":     true,
+}
+
+// RPMDefine returns "el<major> 1" when enableEL is true, "" when false.
+// Errors if enableEL is true for an osID not in KnownELFamily.
+func RPMDefine(osID string, osMajor int, enableEL bool) (string, error) {
+	if !enableEL {
+		return "", nil
+	}
+	if !KnownELFamily[osID] {
+		return "", fmt.Errorf("enable_rpmbuild_define_el is true but OS %q is not a known EL-family distro", osID)
+	}
+	return fmt.Sprintf("el%d 1", osMajor), nil
 }
 
 // Build is a single, fully-explicit build entry from config.yaml.
@@ -142,11 +176,15 @@ type Config struct {
 
 // Resolved is everything needed to build one (os, label) combination.
 type Resolved struct {
-	OS    string
-	Label string
-	Image string
-	Repos Repos
-	Build Build
+	OS                     string
+	Label                  string
+	Image                  string
+	Repos                  Repos
+	BasePackages           []string
+	ConfigManagerPackage   string
+	BuilddepPackage        string
+	EnableRPMBuildDefineEL bool
+	Build                  Build
 }
 
 // Load reads and parses images.yaml and a config file from dir.
@@ -260,10 +298,14 @@ func (c *Config) Resolve(osName, label string) (Resolved, error) {
 		return Resolved{}, fmt.Errorf("build %q on OS %q has no srpm URL", label, osName)
 	}
 	return Resolved{
-		OS:    osName,
-		Label: label,
-		Image: osDef.Image,
-		Repos: osDef.Repos,
-		Build: build,
+		OS:                     osName,
+		Label:                  label,
+		Image:                  osDef.Image,
+		Repos:                  osDef.Repos,
+		BasePackages:           osDef.BasePackages,
+		ConfigManagerPackage:   osDef.ConfigManagerPackage,
+		BuilddepPackage:        osDef.BuilddepPackage,
+		EnableRPMBuildDefineEL: osDef.EnableRPMBuildDefineEL,
+		Build:                  build,
 	}, nil
 }

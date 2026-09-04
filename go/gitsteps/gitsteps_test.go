@@ -131,14 +131,37 @@ func TestStageCmdSkipBison(t *testing.T) {
 
 func TestOSAndRPMDefines(t *testing.T) {
 	r := testRunner("mysql-9.7.1")
+	r.osDef.EnableRPMBuildDefineEL = true
 	if got, want := r.osLabel(), "ol10"; got != want {
 		t.Errorf("osLabel() = %q, want %q", got, want)
 	}
-	if got, want := r.elDefine(), "el10"; got != want {
-		t.Errorf("elDefine() = %q, want %q", got, want)
+	got, err := r.rpmDefine()
+	if err != nil {
+		t.Fatalf("rpmDefine() error: %v", err)
 	}
-	if got, want := r.rpmDefine(), "el10 1"; got != want {
+	if want := "el10 1"; got != want {
 		t.Errorf("rpmDefine() = %q, want %q", got, want)
+	}
+}
+
+func TestRPMDefineDisabledForFedora(t *testing.T) {
+	r := testRunner("mysql-9.7.1")
+	r.OS = osrelease.Info{ID: "fedora", Major: 44}
+	got, err := r.rpmDefine()
+	if err != nil {
+		t.Fatalf("rpmDefine() error: %v", err)
+	}
+	if got != "" {
+		t.Errorf("rpmDefine() = %q, want empty", got)
+	}
+}
+
+func TestRPMDefineErrorsOnMisconfiguredNonELOS(t *testing.T) {
+	r := testRunner("mysql-9.7.1")
+	r.OS = osrelease.Info{ID: "fedora", Major: 44}
+	r.osDef.EnableRPMBuildDefineEL = true
+	if _, err := r.rpmDefine(); err == nil {
+		t.Error("rpmDefine() with enable_rpmbuild_define_el=true on a non-EL OS: want an error, got nil")
 	}
 }
 

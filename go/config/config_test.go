@@ -21,6 +21,38 @@ func loadTestdata(t *testing.T) *Config {
 	return c
 }
 
+func TestRPMDefine(t *testing.T) {
+	cases := []struct {
+		name     string
+		osID     string
+		major    int
+		enableEL bool
+		want     string
+		wantErr  bool
+	}{
+		{name: "disabled is a no-op regardless of OS", osID: "fedora", major: 44, enableEL: false, want: ""},
+		{name: "enabled on known EL-family OS", osID: "ol", major: 10, enableEL: true, want: "el10 1"},
+		{name: "enabled on unknown OS errors", osID: "fedora", major: 44, enableEL: true, wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := RPMDefine(tc.osID, tc.major, tc.enableEL)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error, got none (result=%q)", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("RPMDefine(%q, %d, %v) = %q, want %q", tc.osID, tc.major, tc.enableEL, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestResolveSuccess(t *testing.T) {
 	c := loadTestdata(t)
 	got, err := c.Resolve("ol10", "9.7.1")

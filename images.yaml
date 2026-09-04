@@ -2,61 +2,124 @@
 #
 # Each OS (flavour + major version) maps to a container image and its repo
 # setup. Repo setup is stable per OS major version, so it lives here once rather
-# than being repeated per MySQL version in config.yaml.
+# than being repeated per MySQL version in config.yaml. Shared by build-one
+# and both git-build paths.
 #
-#   repos.enable        -> yum config-manager --set-enabled <name>
-#   repos.epel_packages -> dnf install -y <package>
+#   repos.enable               -> yum config-manager --set-enabled <name>
+#   repos.epel_packages        -> dnf install -y <package>
+#   base_packages              -> installed unconditionally in refresh, every build
+#   config_manager_package     -> installed before repos.enable/epel_packages
+#   builddep_package           -> installed before build-dependency resolution
+#   enable_rpmbuild_define_el  -> pass --define "el<major> 1" to rpmbuild/rpmspec.
+#                                 Only valid for true EL-family OSes; errors
+#                                 out otherwise rather than defining a
+#                                 meaningless macro.
 #
 oses:
   almalinux8:
     image: almalinux:8
+    base_packages: [rpm-build, util-linux]
+    config_manager_package: dnf-command(config-manager)
+    builddep_package: yum-utils
+    enable_rpmbuild_define_el: true
   almalinux9:
     image: almalinux:9
     repos:
       enable: [crb]
       epel_packages: [epel-release]
+    base_packages: [rpm-build, util-linux]
+    config_manager_package: dnf-command(config-manager)
+    builddep_package: yum-utils
+    enable_rpmbuild_define_el: true
   almalinux10:
     image: almalinux:10
     repos:
       enable: [crb]
       epel_packages: [epel-release]
+    base_packages: [rpm-build, util-linux]
+    config_manager_package: dnf-command(config-manager)
+    builddep_package: yum-utils
+    enable_rpmbuild_define_el: true
 
   rocky8:
     image: rockylinux:8
     repos:
       enable: [powertools]
       epel_packages: [epel-release]
+    base_packages: [rpm-build, util-linux]
+    config_manager_package: dnf-command(config-manager)
+    builddep_package: yum-utils
+    enable_rpmbuild_define_el: true
   rocky9:
     image: rockylinux:9
     repos:
       enable: [crb]
       epel_packages: [epel-release]
+    base_packages: [rpm-build, util-linux]
+    config_manager_package: dnf-command(config-manager)
+    builddep_package: yum-utils
+    enable_rpmbuild_define_el: true
   rocky10:
     image: rockylinux/rockylinux:10
     repos:
       enable: [crb]
       epel_packages: [epel-release]
+    base_packages: [rpm-build, util-linux]
+    config_manager_package: dnf-command(config-manager)
+    builddep_package: yum-utils
+    enable_rpmbuild_define_el: true
 
   centos8:
     image: quay.io/centos/centos:stream8
+    base_packages: [rpm-build, util-linux]
+    config_manager_package: dnf-command(config-manager)
+    builddep_package: yum-utils
+    enable_rpmbuild_define_el: true
   centos9:
     image: quay.io/centos/centos:stream9
     repos:
       enable: [crb]
       epel_packages: [epel-release]
+    base_packages: [rpm-build, util-linux]
+    config_manager_package: dnf-command(config-manager)
+    builddep_package: yum-utils
+    enable_rpmbuild_define_el: true
 
   ol8:
     image: oraclelinux:8
     repos:
       enable: [ol8_codeready_builder]
       epel_packages: [oracle-epel-release-el8]
+    base_packages: [rpm-build, util-linux]
+    config_manager_package: dnf-command(config-manager)
+    builddep_package: yum-utils
+    enable_rpmbuild_define_el: true
   ol9:
     image: oraclelinux:9
     repos:
       enable: [ol9_codeready_builder, ol9_developer_EPEL]
       epel_packages: [oracle-epel-release-el9]
+    base_packages: [rpm-build, util-linux]
+    config_manager_package: dnf-command(config-manager)
+    builddep_package: yum-utils
+    enable_rpmbuild_define_el: true
   ol10:
     image: oraclelinux:10
     repos:
       enable: [ol10_codeready_builder, ol10_u2_developer_EPEL]
       epel_packages: [oracle-epel-release-el10]
+    base_packages: [rpm-build, util-linux]
+    config_manager_package: dnf-command(config-manager)
+    builddep_package: yum-utils
+    enable_rpmbuild_define_el: true
+
+  #
+  # Fedora
+  #
+
+  fedora44:
+    image: fedora:44
+    base_packages: [rpm-build, util-linux]
+    config_manager_package: dnf-command(config-manager)
+    builddep_package: yum-utils
+    enable_rpmbuild_define_el: false

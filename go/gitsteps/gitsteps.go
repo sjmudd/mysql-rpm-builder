@@ -121,6 +121,10 @@ type Runner struct {
 	DataDir   string
 	OutputDir string // base directory (relative to DataDir) for produced RPMs
 	SkipBison bool
+
+	// osDef is this OS's images.yaml entry, set by loadBootstrap before
+	// anything reads it.
+	osDef config.OSDef
 }
 
 // NewRunner detects the current OS and prepares a Runner for the given tag.
@@ -156,10 +160,15 @@ func resolveRepoRef(repo, ref, tag string) (string, string) {
 	return repo, ref
 }
 
-func (r *Runner) version() string   { return strings.TrimPrefix(r.Tag, "mysql-") }
-func (r *Runner) osLabel() string   { return r.OS.OSLabel() }
-func (r *Runner) elDefine() string  { return fmt.Sprintf("el%d", r.OS.Major) }
-func (r *Runner) rpmDefine() string { return r.elDefine() + " 1" }
+func (r *Runner) version() string { return strings.TrimPrefix(r.Tag, "mysql-") }
+func (r *Runner) osLabel() string { return r.OS.OSLabel() }
+
+// rpmDefine is the `--define` argument passed to rpmbuild/rpmspec, e.g.
+// "el10 1", or "" when images.yaml's enable_rpmbuild_define_el is false.
+// See config.RPMDefine.
+func (r *Runner) rpmDefine() (string, error) {
+	return config.RPMDefine(r.OS.ID, r.OS.Major, r.osDef.EnableRPMBuildDefineEL)
+}
 
 // outputSubdir is where this (os, tag) build's result lands:
 // <OutputDir>/<buildType>/<os><major>__<tag>/, mirroring
@@ -212,10 +221,10 @@ func (r *Runner) SrcRPMBuild() error {
 	// refresh before setup-repos -- that ordering is left as-is here since
 	// it's an established, tested sequence for the srpm-based path; only
 	// this git-tag path's own orchestration is reordered.)
-	if err := osprep.SetupRepos(repos); err != nil {
+	if err := osprep.SetupRepos(repos, r.osDef.ConfigManagerPackage); err != nil {
 		return err
 	}
-	if err := osprep.Refresh(); err != nil {
+	if err := osprep.Refresh(r.osDef.BasePackages); err != nil {
 		return err
 	}
 	if err := osprep.InstallPackages(packages); err != nil {
@@ -269,6 +278,7 @@ func (r *Runner) loadBootstrap() (config.Repos, []string, error) {
 	if !ok {
 		return config.Repos{}, nil, fmt.Errorf("no OS %q defined in %s", r.osLabel(), config.DefaultImagesFile)
 	}
+	r.osDef = osDef
 	packages, err := loadDepsPackages(r.DataDir, r.osLabel(), r.Tag)
 	if err != nil {
 		return config.Repos{}, nil, err
@@ -608,8 +618,16 @@ func (r *Runner) AssembleSrcRPM() error {
 	if err != nil {
 		return err
 	}
+	define, err := r.rpmDefine()
+	if err != nil {
+		return err
+	}
+	args := []string{"-bs", "mysql.spec"}
+	if define != "" {
+		args = append([]string{"--define", define}, args...)
+	}
 	logx.Log("### assemble_src_rpm: rpmbuild -bs")
-	if err := osprep.RunIn(filepath.Join(dir, rpmbuildSpecsDir), "rpmbuild", "--define", r.rpmDefine(), "-bs", "mysql.spec"); err != nil {
+	if err := osprep.RunIn(filepath.Join(dir, rpmbuildSpecsDir), "rpmbuild", args...); err != nil {
 		return err
 	}
 	if err := r.collect(dir); err != nil {
@@ -702,11 +720,11 @@ func (r *Runner) Stage() error {
 		return err
 	}
 
-	// e.g. el8/el9's compat-library boost source (see fetchExternalSources'
-	// doc comment) -- rpmbuild -bs errors on any declared Source that isn't
-	// present, even ones whose %if branch is irrelevant to what we actually
-	// want out of this build.
-	if err := fetchExternalSources(specCopy, r.elDefine(), filepath.Join(dir, rpmbuildSourcesDir), filepath.Join(r.DataDir, config.SRPMSCacheDir)); err != nil {
+	define, err := r.rpmDefine()
+	if err != nil {
+		return err
+	}
+	if err := fetchExternalSources(specCopy, define, filepath.Join(dir, rpmbuildSourcesDir), filepath.Join(r.DataDir, config.SRPMSCacheDir)); err != nil {
 		return err
 	}
 
@@ -759,8 +777,12 @@ func findSourceTarball(build, version string) (string, error) {
 // not the resolved URL -- only `rpmspec -P` (parse: expands macros AND
 // evaluates %if, so only the branches active for this specific el<N> build
 // survive) gives us the real, active Source: lines to act on.
-func fetchExternalSources(specPath, elDefine, sourcesDir, cacheDir string) error {
-	out, err := exec.Command("rpmspec", "--define", elDefine+" 1", "-P", specPath).Output()
+func fetchExternalSources(specPath, rpmDefine, sourcesDir, cacheDir string) error {
+	args := []string{"-P", specPath}
+	if rpmDefine != "" {
+		args = append([]string{"--define", rpmDefine}, args...)
+	}
+	out, err := exec.Command("rpmspec", args...).Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return fmt.Errorf("rpmspec -P %s: %w:\n%s", specPath, err, exitErr.Stderr)
@@ -1035,8 +1057,12 @@ func GenerateBuildOneConfig(dataDir, outputDir, osLabel, tag string) (string, er
 // reasoning as downloadFile above: go/gitsteps deliberately does not
 // import go/steps). Must run as root, after Stage.
 func (r *Runner) BuildDeps() error {
-	logx.Log("### install-builddeps: resolving build dependencies with yum-builddep")
-	if err := osprep.Run("yum", "install", "-y", "yum-utils"); err != nil { // provides yum-builddep
+	builddepPackage := r.osDef.BuilddepPackage
+	if builddepPackage == "" {
+		builddepPackage = osprep.DefaultBuilddepPackage
+	}
+	logx.Logf("### install-builddeps: resolving build dependencies with yum-builddep (via %s)", builddepPackage)
+	if err := osprep.Run("yum", "install", "-y", builddepPackage); err != nil {
 		return err
 	}
 	u, err := user.Lookup(BuildUser)
@@ -1068,8 +1094,16 @@ func (r *Runner) RPMBuild() error {
 		return err
 	}
 	specs := filepath.Join(dir, rpmbuildSpecsDir)
+	define, err := r.rpmDefine()
+	if err != nil {
+		return err
+	}
+	args := []string{"-ba", "mysql.spec"}
+	if define != "" {
+		args = append([]string{"--define", define}, args...)
+	}
 	logx.Log("### rpmbuild: rpmbuild -ba")
-	if err := osprep.RunIn(specs, "rpmbuild", "--define", r.rpmDefine(), "-ba", "mysql.spec"); err != nil {
+	if err := osprep.RunIn(specs, "rpmbuild", args...); err != nil {
 		return err
 	}
 	return r.collectAll(dir)
@@ -1114,10 +1148,10 @@ func (r *Runner) AllRPMsBuild() error {
 	if err != nil {
 		return err
 	}
-	if err := osprep.SetupRepos(repos); err != nil {
+	if err := osprep.SetupRepos(repos, r.osDef.ConfigManagerPackage); err != nil {
 		return err
 	}
-	if err := osprep.Refresh(); err != nil {
+	if err := osprep.Refresh(r.osDef.BasePackages); err != nil {
 		return err
 	}
 	if err := osprep.InstallPackages(packages); err != nil {
